@@ -1,0 +1,4 @@
+# File to define user's custom pip packages
+gcp-tools-lite==0.0.36
+mlops-decorators==0.1.11
+model-lineage==0.2.11

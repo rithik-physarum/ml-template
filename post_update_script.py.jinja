@@ -1,0 +1,32 @@
+"""
+# -------------------------------------------------------------
+# SCRIPT FILE - Python
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+"""
+
+# [DO NOT EDIT] 
+
+import os
+import yaml
+import json
+
+
+current_dir = os.path.dirname(os.path.realpath(__file__))
+
+env_dir = f"{current_dir}/{{ repo_name }}/env"
+
+def replace_template_dir(env: str, env_dir: str):
+    content = ""
+    
+    with open(f"{env_dir}/{env}.env", "r") as fi:
+        content = fi.read()
+        content = content.replace("$$template_directory$$", current_dir)
+
+    with open(f"{env_dir}/{env}.env", "w") as fi:
+        fi.write(content)
+        
+replace_template_dir("exp", env_dir)
+replace_template_dir("prod", env_dir)

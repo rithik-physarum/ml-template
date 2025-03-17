@@ -1,0 +1,18 @@
+[project]
+dynamic = ["version"]
+name = "ml-template"
+description = "Template to generate data science repository with functionality for model training, prediction, deployment and monitoring"
+readme = "README.md"
+dependencies = [
+  "setuptools",
+  "setuptools_scm[toml]>=6.2",
+  "copier==9.1.0",
+  "bump2version",
+  "pyyaml-include==1.4.1",
+]
+
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "copier==9.1.0"]
+
+[project.urls]
+repository = "https://gitlab.agile.nat.bt.com/CDATASCI/gcp/templates/ml-template"

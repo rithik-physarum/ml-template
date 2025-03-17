@@ -1,0 +1,139 @@
+.authentication:
+  script:
+    - echo ${CI_JOB_JWT_V2} > ${CI_PIPELINE_ID}.git_token
+    - echo CONFIG_PATH = "${CI_PROJECT_DIR}/${REPO_NAME}/core/config/${ENV}" >> 
+        ${CI_PROJECT_DIR}/${REPO_NAME}/env/${ENV}.env
+
+    - gcloud iam workload-identity-pools create-cred-config ${GCP_WIF_PROVIDER}
+      --service-account="${GCP_SERVICE_ACCOUNT}"
+      --output-file=${CI_PIPELINE_ID}.json
+      --credential-source-file=${CI_PIPELINE_ID}.git_token
+    - gcloud auth login --cred-file ${CI_PIPELINE_ID}.json
+    - gcloud config set project ${PROJECT_ID}-${ENV}
+
+    - export GOOGLE_APPLICATION_CREDENTIALS=$CI_PIPELINE_ID.json 
+    - export GOOGLE_CREDENTIALS=$(< $CI_PIPELINE_ID.json)
+    - export GOOGLE_CLOUD_PROJECT=${PROJECT_ID}-${ENV}
+    - export RUN_ENVIRONMENT=${ENV}
+
+    - cp ${CI_PIPELINE_ID}.git_token ${REPO_NAME}/core/
+    - cp ${CI_PIPELINE_ID}.json ${REPO_NAME}/core/
+
+.migration_authentication:
+  script:
+    - echo ${CI_JOB_JWT_V2} > ${CI_PIPELINE_ID}.git_token
+
+    - gcloud iam workload-identity-pools create-cred-config ${GCP_WIF_MIGRATE_PROVIDER}
+      --service-account="${GCP_MIGRATE_SERVICE_ACCOUNT}"
+      --output-file=${CI_PIPELINE_ID}.json
+      --credential-source-file=${CI_PIPELINE_ID}.git_token
+    - gcloud auth login --cred-file ${CI_PIPELINE_ID}.json
+    - gcloud config set project ${PROJECT_ID}-${ENV}
+
+    - export GOOGLE_APPLICATION_CREDENTIALS=$CI_PIPELINE_ID.json 
+    - export GOOGLE_CREDENTIALS=$(< $CI_PIPELINE_ID.json)
+    - export GOOGLE_CLOUD_PROJECT=${PROJECT_ID}-${ENV}
+    - export RUN_ENVIRONMENT=${ENV}
+
+    - cp ${CI_PIPELINE_ID}.git_token ${REPO_NAME}/core/
+    - cp ${CI_PIPELINE_ID}.json ${REPO_NAME}/core/
+
+.pip_authentication:
+  script:
+    - token=$(gcloud auth print-access-token)
+    - pip install keyring keyrings.google-artifactregistry-auth
+    - |
+      cat > $HOME/.pypirc << EOL
+      [distutils]
+      index-servers =
+        ${PY_REGISTRY_NAME}
+
+      [${PY_REGISTRY_NAME}]
+      repository = https://${PY_REGISTRY}/${PROJECT_ID}-${ENV}/${PY_REGISTRY_NAME}/
+      username: oauth2accesstoken
+      password: ${token}
+      EOL
+    - mkdir -p $HOME/.config/pip/
+    - |
+      cat > $HOME/.config/pip/pip.conf << EOL
+      [global]
+      extra-index-url = https://oauth2accesstoken:${token}@${PY_REGISTRY}/${PROJECT_ID}-${ENV}/${PY_REGISTRY_NAME}/simple
+      EOL
+
+.docker_build_setup:
+  script:
+    - mkdir -p /kaniko/.docker
+    - cp $CI_PROJECT_DIR/kaniko-docker-config.json /kaniko/.docker/config.json
+    - cp $CI_PROJECT_DIR/.pypirc /kaniko/.pypirc
+    - cp $CI_PROJECT_DIR/pip.conf /kaniko/pip.conf
+    - cp $CI_PROJECT_DIR/${CI_PIPELINE_ID}.json /kaniko/key.json
+
+docker_auth:
+  stage: pre_docker_build
+  environment: ${ENV}
+  tags:
+   - ${RUNNER}
+  image: ${TERRAFORM_IMAGE}
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+
+    - token=$(gcloud auth print-access-token)
+    - docker_token=$(echo -n "gclouddockertoken:$token" | base64 | tr -d "\n")
+    - echo "{\"auths\":{\"${DOCKER_REGISTRY}\":{\"auth\":\"${docker_token}\",\"email\":\"${GCP_SERVICE_ACCOUNT}\"}}}" >
+       ${CI_PROJECT_DIR}/kaniko-docker-config.json
+
+    - cp $HOME/.pypirc ${CI_PROJECT_DIR}/.pypirc
+    - cp $HOME/.config/pip/pip.conf ${CI_PROJECT_DIR}/pip.conf
+  artifacts:
+    paths:
+      - ${CI_PIPELINE_ID}.git_token
+      - ${CI_PIPELINE_ID}.json
+      - ${CI_PROJECT_DIR}/kaniko-docker-config.json
+      - ${CI_PROJECT_DIR}/pip.conf
+      - ${CI_PROJECT_DIR}/.pypirc
+  rules:
+    - if: $SKIP_DOCKER
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: $CI_COMMIT_BRANCH == "prod" || $CI_COMMIT_TAG
+      variables:
+        ENV: "prod"
+      changes:
+        - ${REPO_NAME}/core/training/Dockerfile
+        - ${REPO_NAME}/core/training/requirements.txt
+        - ${REPO_NAME}/core/prediction/Dockerfile
+        - ${REPO_NAME}/core/prediction/requirements.txt
+        - ${REPO_NAME}/core/prediction/dataflow/*
+        - ${REPO_NAME}/core/prediction/dataflow/**/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/**/*
+    - if: '$CI_COMMIT_BRANCH == "prod" && $RUN_DOCKER == "true"'
+      variables:
+        ENV: "prod"
+    - if: $CI_COMMIT_BRANCH != "prod"
+      variables:
+        ENV: "exp"
+      changes:
+        - ${REPO_NAME}/core/training/Dockerfile
+        - ${REPO_NAME}/core/training/requirements.txt
+        - ${REPO_NAME}/core/prediction/Dockerfile
+        - ${REPO_NAME}/core/prediction/requirements.txt
+        - ${REPO_NAME}/core/prediction/dataflow/*
+        - ${REPO_NAME}/core/prediction/dataflow/**/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/**/*
+    - if: '$CI_COMMIT_BRANCH != "prod" && $RUN_DOCKER == "true"'
+      variables:
+        ENV: "exp"

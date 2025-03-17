@@ -1,0 +1,27 @@
+# -------------------------------------------------------------
+# DOCKERFILE - Docker configuration
+#
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# Get the source image
+FROM registry.dci.bt.com/app21279/base-dockers/vertex/slim-py39:v0.0.3
+# FROM registry.dci.bt.com/app21279/base-dockers/vertex/slim-py39-ds-tools:v0.0.2
+
+# [DO NOT EDIT]
+
+WORKDIR /home
+ARG GIT_TOKEN
+
+COPY training/requirements.txt /home/
+COPY {{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/ /home/{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}
+
+RUN --mount=type=secret,id=key.json,target=/kaniko/key.json \ 
+    --mount=type=secret,id=pip.conf,target=/kaniko/pip.conf \
+    export GOOGLE_APPLICATION_CREDENTIALS=/kaniko/key.json \
+    PIP_CONFIG_FILE=/kaniko/pip.conf && \
+
+    pip install --no-cache-dir -r /home/requirements.txt && \
+    pip install --no-cache-dir {{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/.

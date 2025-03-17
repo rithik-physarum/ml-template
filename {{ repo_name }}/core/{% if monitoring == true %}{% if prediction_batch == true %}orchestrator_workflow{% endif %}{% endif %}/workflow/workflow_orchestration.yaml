@@ -1,0 +1,304 @@
+# Workflow Triggered by subscription
+# - Steps 
+#   . Trigger schema validation dataflow job
+#   . Trigger prediction dataflow job
+#   . Trigger monitoring dataproc pipeline
+
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [DO NOT EDIT]
+# TODO: copier for both prediction_aws and prediction_batch
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - repo_name: @static_params.repo_name
+          - experiment_name: @static_params.experiment_name
+          - region: @static_params.region
+          - schema_validation_params: @static_params.schema_validation_params
+          - prediction_pipeline_params: @static_params.prediction_pipeline_params
+          - template_name: @static_params.monitoring_workflow_name
+          - cluster_name: @static_params.cluster_name
+          - loader_class_args: @static_params.loader_class_args
+          - loader_class_args_sep: '@static_params.loader_class_arg_sep'
+          - drift_dict: {}
+          - log_dict: {}
+          - schema_validation_template_url: @static_params.schema_validation_template_url
+          - prediction_pipeline_url : @static_params.prediction_pipeline_url
+    - triggerSchemaValidation:
+        call: launchDataflow
+        args:
+          project: ${project_id}
+          region: ${region}
+          job_name: ${experiment_name+ "-schema-validation-" + sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
+          template: ${schema_validation_template_url}
+          dataflow_template_parameters: ${schema_validation_params}
+        result: schema_validation_job_id
+    - waitDataflowJobDone:
+        call: dataflowWaitUntilStatus
+        args:
+          project: ${project_id}
+          region: ${region}
+          jobId: ${schema_validation_job_id}
+          status: "JOB_STATE_DONE"
+          job_type: "Schema Validation"
+          repo_name: ${repo_name}
+    - triggerPrediction:
+        call: launchDataflow
+        args:
+          project: ${project_id}
+          region: ${region}
+          job_name: ${experiment_name+ "-prediction-" + sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID")}
+          template: ${prediction_pipeline_url}
+          dataflow_template_parameters: ${prediction_pipeline_params}
+        result: prediction_job_id
+    - waitDataflowJobDonePred:
+        call: dataflowWaitUntilStatus
+        args:
+          project: ${project_id}
+          region: ${region}
+          jobId: ${prediction_job_id}
+          status: "JOB_STATE_DONE"   
+          job_type: "Batch Prediction"
+          repo_name: ${repo_name}   
+    - triggerMonitoringWorkflow:
+        call: launchDataprocTemplate
+        args:
+          project: ${project_id}
+          region: ${region}
+          template_name: ${template_name}
+          cluster_name: ${cluster_name}
+          loader_class_args: ${loader_class_args}
+          loader_class_args_sep: ${loader_class_args_sep}
+        result: monitoring_job_id
+    - waitMonitoringWorkflow:
+        call: waitDataprocJobDone
+        args:
+          project_id: ${project_id}
+          region: ${region}
+          monitoring_job_id: ${monitoring_job_id}
+          job_type: "Monitoring"
+          repo_name: ${repo_name}
+    # - execute_query:
+    #     call: googleapis.bigquery.v2.jobs.query
+    #     args:
+    #       projectId: ${project_id}
+    #       body:
+    #         query: ${"SELECT feature, MAX(reference_date) AS max_reference_date, jensenshannon, kullbackleibler, wasserstein  FROM `"+ monitoring_drift_table + "` WHERE reference_date in ( select max(reference_date) from `"+ monitoring_drift_table + "` ) GROUP BY feature, jensenshannon, kullbackleibler, wasserstein ORDER BY feature ASC"}
+    #         useLegacySql: false
+    #     result: query_response
+    #     next: save_drift_dict
+    # - save_drift_dict:
+    #     assign:
+    #       - drift_dict: ${query_response.rows}
+    #     next: compare_drift_values
+    # - compare_drift_values:
+    #     for:
+    #       value: feature_drift
+    #       in: ${drift_dict}
+    #       steps:
+    #         - log_features:
+    #             switch:
+    #               - condition: ${double(feature_drift.f[3].v) > threshold_params.kullbackleibler}
+    #                 steps:
+    #                   - add_kullbackleibler:
+    #                       assign:
+    #                         - log_dict[feature_drift.f[0].v]: ${[feature_drift.f[3].v,"kullbackleibler"]}
+    #               - condition: ${double(feature_drift.f[2].v) > threshold_params.jensenshannon}
+    #                 steps:
+    #                   - add_jensenshannon:
+    #                       assign:
+    #                         - log_dict[feature_drift.f[0].v]: ${[feature_drift.f[2].v, "jensenshannon"]}
+    #               - condition: ${double(feature_drift.f[4].v) > threshold_params.wasserstein}
+    #                 steps:
+    #                   - add_wasserstein:
+    #                       assign:
+    #                         - log_dict[feature_drift.f[0].v]: ${[feature_drift.f[4].v, "wasserstein"]}
+    #     next: log_drift_alert
+    # - log_drift_alert:
+    #     call: sys.log
+    #     args:
+    #       text:  ${"Failed in drift comparison  - "+ json.encode_to_string(log_dict)} 
+    #       severity: WARNING   
+
+
+# Function to launch a dataproc workflow template
+# Pramaters - 
+#   . project (str) - project to launch the dataproc workflow template
+#   . region (str) - Location to launch the dataproc workflow template
+#   . workflow_name (str) - Name of the dataproc workflow template
+#   . workflow_params (dict) - Runtime input prameters of the workflow template 
+launchDataprocTemplate:
+  params: [project, region, template_name, cluster_name, loader_class_args, loader_class_args_sep]
+  steps:
+    - launch:
+        call: http.post
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/projects/"+project+"/regions/"+region+"/workflowTemplates/"+template_name+":instantiate?alt=json"}
+          body:
+            parameters:
+              CLUSTER: ${cluster_name}
+              LOADER_CLASS_ARGS: ${loader_class_args}
+              LOADER_CLASS_ARGS_SEP: ${loader_class_args_sep}
+          auth:
+            type: OAuth2
+        result: monitoringJobResponse
+    - log:
+        call: sys.log
+        args:
+          text: ${monitoringJobResponse}
+          severity: "INFO"
+        next: jobCreated
+    - jobCreated:
+        return: ${monitoringJobResponse.body.name}
+
+# Function to wait until the launched dataproc job is completed
+# Function takes the id of the launched job and keeps on checking the
+# status of the job until it's status is done.
+# Pramaters -
+#   . monitoring_job_id (str) - id of the launched job recieved after launching the job
+#   . project_id (str) - Project in which the job was launched
+#   . region (str) - Region in which the dataproc job was launched
+#   . poll_interval (int) - Poliling interval is the wait time between status check triggers
+#   . max_poll_attempts (int) - maximum number of times to fetch the status until the job is done
+waitDataprocJobDone:
+  params: [monitoring_job_id, project_id, region, job_type, repo_name, poll_interval: 30, max_poll_attempts: 60]
+  steps:
+    - init:
+        assign:
+          - poll_attempts: 0
+    - wait_for_completion:
+        switch:
+          - condition: ${poll_attempts < max_poll_attempts}
+            steps:
+              - log_status_check_url:
+                  call: sys.log
+                  args:
+                    text: ${"Url of the job is - https://dataproc.googleapis.com/v1/"+monitoring_job_id}
+                    severity: INFO
+              - wait_interval:
+                  call: sys.sleep
+                  args:
+                    seconds: ${poll_interval}
+                  next: check_spark_job_status
+              - increment_poll_attempts:
+                  assign:
+                    - poll_attempts: ${poll_attempts + 1}
+                  next: wait_for_completion
+          - condition: ${poll_attempts >= max_poll_attempts}
+            steps:
+              - log_polling_limit_exceeded:
+                  call: sys.log
+                  args:
+                    text: "Exceeded maximum polling attempts for Spark job ${sparkJobId}."
+                    severity: ERROR
+                  next: exit_job_fail
+    - check_spark_job_status:
+        call: http.get
+        args:
+          url: ${"https://dataproc.googleapis.com/v1/"+monitoring_job_id}
+          auth:
+            type: OAuth2
+        result: monitoring_job_status
+    - process_spark_job_status:
+        switch:
+          - condition: ${monitoring_job_status.body.metadata.state == "DONE"}
+            steps:
+              - handle_spark_job_completion:
+                  next: exit_job_success
+          - condition: true
+            next: wait_for_completion  # Continue waiting for completion
+    - exit_job_success:
+        return: ${monitoring_job_status}
+    - exit_job_fail:
+        steps:
+          - log_monitoring_status:
+              call: sys.log
+              args:
+                text: ${"dataProc job failed with status - " + monitoring_job_status + ", job type - " + job_type + ", repo - " + repo_name + ". Please investigate immediately."}
+                severity: ERROR 
+# Function to launch a dataflow job
+# Pramaters - 
+#   . project (str) - project to launch the dataflow job
+#   . region (str) - Location to launch the dataflow job
+#   . template (str) - GCS URI of the saved dataflow pipeline template
+#   . dataflow_template_parameters (dict) - Runtime Prameters of the dataflow pipeline
+launchDataflow:
+  params: [project, region, template, dataflow_template_parameters, job_name]
+  steps:
+    - launch:
+        call: http.post
+        args:
+          url: ${"https://dataflow.googleapis.com/v1b3/projects/"+project+"/locations/"+region+"/templates:launch?gcsPath="+ template}
+          auth:
+            type: OAuth2
+          body:
+            jobName: ${job_name}
+            environment:
+              zone: ${region + "-a"}
+              machine_type: n2-highmem-4
+            parameters: ${dataflow_template_parameters}
+        result: dataflowResponse
+        next: jobCreated
+    - jobCreated:
+        return: ${dataflowResponse.body.job.id}
+
+# Function to wait for a launched dataflow job until completion
+# Pramaters - 
+#   . project (str) - project to launch the dataflow job
+#   . region (str) - Location to launch the dataflow job
+#   . jobId (str) - job id of the laucnhed job to check the status
+#   . status (dict) - status of the laucnhed job
+dataflowWaitUntilStatus:
+  params: [project, region, jobId, status, job_type, repo_name]
+  steps:
+    - init:
+        assign:
+          - currentStatus: ""
+          - failureStatuses: ["JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_UPDATED", "JOB_STATE_DRAINED"]
+    - check_condition:
+        switch:
+          - condition: ${currentStatus in failureStatuses}
+            steps:
+              - log_failure:
+                  call: sys.log
+                  args:
+                    text: ${"Dataflow job failed with status - " + currentStatus + ", job type - " + job_type + ", repo - " + repo_name + ". Please investigate immediately."}
+                    severity: ERROR
+            next: exit_fail
+          - condition: ${currentStatus != status}
+            next: iterate
+        next: exit_success
+    - iterate:
+        steps:
+          - sleep30s:
+              call: sys.sleep
+              args:
+                seconds: 30
+          - getJob:
+              call: http.get
+              args:
+                url: ${"https://dataflow.googleapis.com/v1b3/projects/"+project+"/locations/"+region+"/jobs/"+jobId}
+                auth:
+                  type: OAuth2
+              result: getJobResponse
+          - getStatus:
+              assign:
+                - currentStatus: ${getJobResponse.body.currentState}
+          - log_currentstatus:
+              call: sys.log
+              args:
+                text: ${"Current job status="+currentStatus}
+                severity: "INFO"
+        next: check_condition
+    - exit_success:
+        return: ${currentStatus}
+    - exit_fail:
+        raise: ${"Job in unexpected terminal status " +currentStatus+ " with job type - " +job_type}

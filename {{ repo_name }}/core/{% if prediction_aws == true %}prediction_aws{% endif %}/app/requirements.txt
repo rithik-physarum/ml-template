@@ -1,0 +1,5 @@
+protobuf==5.29.*
+python-dotenv>=0.21.1
+psycopg2-binary
+uvicorn[standard]
+gunicorn

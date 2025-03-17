@@ -1,0 +1,9 @@
+pip==22.0.2
+pytest
+pytest-html
+wheel
+setuptools
+apache-beam[gcp]==2.34.*
+dotmap
+pandas
+scikit-learn

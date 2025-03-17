@@ -1,0 +1,25 @@
+"""
+# -------------------------------------------------------------
+# SCRIPT FILE - Python
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+{{ package_name|lower|replace('_', '-')|replace(' ', '-') }} setup file.
+"""
+
+# [DO NOT EDIT] 
+
+import setuptools
+
+with open("requirements.txt") as f:
+    required = f.read().splitlines()
+
+setuptools.setup(
+    name="{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}",
+    version="0.0.1",
+    description="{{ package_name|lower|replace('_', ' ')|replace('-', ' ') }}",
+    install_requires=required,
+    packages=setuptools.find_packages(),
+)

@@ -1,0 +1,9 @@
+model_config:
+  artifacts:
+    model_object:
+        local_filename: "model.pkl"
+
+feature_store:
+  store_api: json_feature_store
+  config:
+    data_path: "app/test/data/test_json.json"

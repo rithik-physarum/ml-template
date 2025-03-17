@@ -1,0 +1,209 @@
+# Configure jinja2 defaults to make syntax highlighters lives easier
+_templates_suffix: .jinja
+_envops:
+  block_end_string: "%}"
+  block_start_string: "{%"
+  comment_end_string: "#}"
+  comment_start_string: "{#"
+  keep_trailing_newline: true
+  variable_end_string: " }}"
+  variable_start_string: "{{ "
+_answers_file: .mlops-answers.yml
+_exclude:
+  - "copier.yml"
+  - "~*"
+  - "*.py[co]"
+  - "__pycache__"
+  - ".git"
+  - ".DS_Store"
+  - ".svn"
+  - "README.md"
+  - "*.gif"
+  - "*.png"
+  - "mkdocs.yml"
+  - "docs"
+  - "images"
+_tasks:
+  - cp .common-answers.json /tmp/
+  - rm __version__.py __init__.py pyproject.toml 
+  - rm -rf .releaserc.yml .bumpversion.cfg
+  - python post_update_script.py
+  - rm post_update_script.py
+  - echo -e \
+    "\n\n\n\nProject initialised!"
+    "\nIf you're not already, please use our documentation to see how to push these changes to GitLab, and more!"
+    "\n\n\nSee Section 1.6 on page Initialising your project:"
+    "\nhttps://cdatasci.pages.agile.nat.bt.com/gcp/templates/ml-template/Initialisation/"
+    "\n\n\nHappy developing! :)"
+
+author_name:
+  help: Step 1/19 - "User's full name"
+  type: str
+
+git_email:
+  help: Step 2/19 - "User's email address"
+  type: str
+  
+user_uin:
+  help: Step 3/19 - "User's BT UIN"
+  type: str
+
+user_team:
+  help: |
+      Step 4/19 - "User's team, for chapter data scientists this will be your alliance 
+          i.e. bb-alliance, mobile-alliance, vfm-alliance, etc"
+  type: str
+
+gitlab_remote_location:
+  help: |
+      Step 5/19 - "Parent Gitlab (remote) project location, this is where your project 
+          is located in GitLab e.g. CDATASCI/gcp/models/recommender"
+  type: str
+
+local_repo_location:
+  default: "/home/jupyter"
+  help: |
+      Step 6/19 - "Local repo location, i.e. where your new repository is located in your 
+          notebook instance. Unless you have your repository inside another directory in your 
+          instance home directory this will be /home/jupyter"
+  type: str
+
+repo_name:
+  help: Step 7/19 - "GitLab repository or high level folder, e.g. bt-bb-dynamic-pricing"
+  type: str
+  
+experiment_name:
+  default: "ex-{{ repo_name|replace('bt-', '')|replace('ee-', '') }}"
+  help: | 
+      Step 8/19 - "Experiment name, for chapter data scientists this will be 
+          'ex-' followed by the name of your repository, e.g. ex-dynamic-pricing"
+  type: str
+
+package_name:
+  default: "{{ repo_name|replace('bt-', '')|replace('ee-', '')|replace('-', '_') }}"
+  help: Step 9/19 - "Repository-specific package name in snake_case, e.g. dynamic_pricing"
+  type: str
+
+project_id:
+  default: "bt-bvp-ml-plat-ai-pipe-exp"
+  help: |
+      Step 10/19 - "Google Cloud project, for chapter data scientists this will be bt-bvp-ml-plat-ai-pipe-exp"
+  type: str
+
+service_account:
+  default: "ml-pipelines-sa@bt-bvp-ml-plat-ai-pipe-exp.iam.gserviceaccount.com"
+  help: |
+      Step 11/19 - "Service account, for chapter data scientists this will be 
+          ml-pipelines-sa@bt-bvp-ml-plat-ai-pipe-exp.iam.gserviceaccount.com"
+  type: str
+
+region:
+  default: "europe-west2"
+  help: Step 12/19 - "Project location, for chapter data scientists this will be europe-west2"
+  type: str
+
+docker_repo:
+  help: |
+      Step 13/19 - "Docker registry, for chapter data scientists this will be ds-capability-docker-registry, 
+          for nba developers this will be nba-docker-registry"
+  type: str
+
+pip_artifactory:
+  default: "dsc-pyartifactory"
+  help: |
+      Step 14/19 - "The pip artifactory"
+  type: str
+
+exp_bucket:
+  help: |
+      Step 15/19 - "Google Cloud Storage exp environment, for chapter data scientists this will be ds-capability, 
+          for nba developers this will be c16-nba/vertex-pipeline"
+  type: str
+
+prod_bucket:
+  type: str
+  help: |
+      Step 16/19 - "Google Cloud Storage prod environment, for chapter data scientists this will be ds-capability-prod, 
+          for nba developers this will be c16-nba/vertex-pipeline"
+          
+training:
+  default: true
+  choices:
+    - true
+    - false
+  help: | 
+    Step 17/19 - "Select true if you want a training pipeline in your repository, for chapter data scientists select true"
+  type: bool
+
+prediction:
+  default: true
+  choices:
+    - true
+    - false
+  help: Step 18/19 - "Select true if you want a prediction pipeline in your repository, for chapter data scientists select true"
+  type: bool
+
+prediction_batch:
+  default: true
+  when: "{% if prediction == true %}true{% endif %}"
+  choices:
+    - true
+    - false
+  help: |
+    Step 18[A]/19 - "Select true if you want to use Dataflow for prediction, for chapter data scientists select true"
+  type: bool
+
+prediction_vertex:
+  default: false
+  when: "{% if prediction == true %}true{% endif %}"
+  choices:
+    - true
+    - false
+  help: Step 18[B]/19 - "Select true if you want to use Vertex for prediction, for chapter data scientists select false"
+  type: bool
+
+prediction_cloudrun:
+  default: false
+  when: "{% if prediction == true %}true{% endif %}"
+  choices:
+    - true
+    - false
+  help: Step 18[C]/19 - "Select true if you want to use Cloud Run for prediction, for chapter data scientists select false"
+  type: bool
+  
+prediction_aws:
+  default: false
+  when: "{% if prediction == true %}true{% endif %}"
+  choices:
+    - true
+    - false
+  help: Step 18[D]/19 - "Select true if you want to use AWS for prediction, for chapter data scientists select false"
+  type: bool
+  
+aws_project_id:
+  when: "{% if prediction_aws == true %}true{% endif %}"
+  help: Step 18[E]/19 - "AWS Project ID"
+  type: str
+  
+aws_default_region:
+  when: "{% if prediction_aws == true %}true{% endif %}"
+  help: Step 18[F]/19 - "AWS Region"
+  type: str
+
+aws_team:
+  when: "{% if prediction_aws == true %}true{% endif %}"
+  help: Step 18[G]/19 - "AWS Team you are working with"
+  type: str
+
+aws_auto_deployment:
+  when: "{% if prediction_aws == true %}true{% endif %}"
+  help: Step 18[H]/19 - "Does it auto retrain and deploy"
+  type: bool
+
+monitoring:
+  default: true
+  choices:
+    - true
+    - false
+  help: Step 19/19 - "Select true if you want to model performance and drift monitoring, for chapter data scientists select true"
+  type: bool

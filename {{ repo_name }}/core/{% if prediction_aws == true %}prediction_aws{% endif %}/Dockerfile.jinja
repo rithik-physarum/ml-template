@@ -1,0 +1,47 @@
+ARG BASE_IMAGE
+FROM $BASE_IMAGE
+
+ARG http_proxy
+ARG https_proxy
+ARG no_proxy
+ARG git_token
+ARG ci_pipeline_id
+ARG project_id
+ARG ENV
+
+ENV GIT_TOKEN=$git_token
+ENV ENV=$ENV
+ENV RUN_ENVIRONMENT=$ENV
+ENV GOOGLE_CLOUD_PROJECT=$project_id
+ENV ARTIFACT_LOCATION="/home/artifacts"
+
+COPY ./${ci_pipeline_id}.git_token ./${ci_pipeline_id}.git_token
+COPY ./{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/ ./{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/
+COPY ./prediction_aws/app/ ./
+
+COPY ./config/${ENV} ./config/${ENV}
+
+RUN python3 -m pip install --no-cache-dir -U pip
+
+RUN --mount=type=secret,id=key.json,target=/kaniko/key.json \ 
+    --mount=type=secret,id=pip.conf,target=/kaniko/pip.conf \
+    --mount=type=secret,id=${ci_pipeline_id}.json,target=/kaniko/${ci_pipeline_id}.json \
+    export GOOGLE_APPLICATION_CREDENTIALS=/kaniko/key.json \
+    PIP_CONFIG_FILE=/kaniko/pip.conf \
+    && pip install -U --no-cache-dir -r ./requirements.txt \
+    && pip install -U --no-cache-dir -r ./custom_requirements.txt \
+    && pip install  --no-cache-dir ./{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/. \
+    && python3 ./utils/wrap_gcs_artifacts.py 
+
+RUN rm ./${ci_pipeline_id}.git_token
+RUN echo $PATH
+
+ENV GOOGLE_APPLICATION_CREDENTIALS=/dev/null
+
+ENV GIT_TOKEN=
+ENV PYTHONUNBUFFERED=1
+ENV PORT 8080
+EXPOSE 8080
+
+ENTRYPOINT ["python", "-m", "gunicorn", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "--timeout", "1500", "--threads", "1", "--preload", "--keep-alive", "95", "--bind", "0.0.0.0:8080", "main:app"]
+ 

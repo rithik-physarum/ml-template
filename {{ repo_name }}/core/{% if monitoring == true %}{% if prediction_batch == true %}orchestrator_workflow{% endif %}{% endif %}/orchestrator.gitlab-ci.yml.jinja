@@ -1,0 +1,126 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [DO NOT EDIT]
+
+generate_orchestration_workflow:
+  environment: ${ENV}
+  stage: generate_orchestration_workflow
+  tags:
+    - ${RUNNER}
+  image:
+    name: ${GCLOUD_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+
+    - cp ${CI_PIPELINE_ID}.git_token ./${REPO_NAME}/core/orchestrator_workflow/
+    - cp ${CI_PIPELINE_ID}.json ./${REPO_NAME}/core/orchestrator_workflow/
+
+    - cd ${REPO_NAME}/core/
+    - python3 -m pip install --user -r orchestrator_workflow/requirements.txt
+    - pip install --user ./{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}
+    - python orchestrator_workflow/runner.py --execute --deploy
+  artifacts:
+    paths:
+      - ${REPO_NAME}/core/orchestrator_workflow/workflow/workflow_deploy.yaml
+  rules:
+    - if: $SKIP_WORKFLOW
+      when: never
+    - if: $SKIP_DEPLOY
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "prod" || $CI_COMMIT_TAG
+      changes:
+        - ${REPO_NAME}/core/orchestrator_workflow/*
+        - ${REPO_NAME}/core/orchestrator_workflow/*/*
+        - ${REPO_NAME}/core/config/*/prediction_config.yaml
+        - ${REPO_NAME}/core/config/*/dataflow_config.yaml
+        - ${REPO_NAME}/core/config/*/monitoring_config.yaml
+        - ${REPO_NAME}/core/config/*/orchestration_config.yaml
+      variables:
+        ENV: "prod"
+    - if: $CI_COMMIT_REF_NAME != "prod"
+      changes:
+        - ${REPO_NAME}/core/orchestrator_workflow/*
+        - ${REPO_NAME}/core/orchestrator_workflow/*/*
+        - ${REPO_NAME}/core/config/*/prediction_config.yaml
+        - ${REPO_NAME}/core/config/*/dataflow_config.yaml
+        - ${REPO_NAME}/core/config/*/monitoring_config.yaml
+        - ${REPO_NAME}/core/config/*/orchestration_config.yaml
+      variables:
+        ENV: "exp"
+      
+execute_orchestration_workflow:
+  environment: ${ENV}
+  stage: execute_orchestration_workflow
+  tags:
+    - ${RUNNER}
+  image:
+    name: ${GCLOUD_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+
+    - cp ${CI_PIPELINE_ID}.git_token ./${REPO_NAME}/core/orchestrator_workflow/
+    - cp ${CI_PIPELINE_ID}.json ./${REPO_NAME}/core/orchestrator_workflow/
+    
+    - cd ${REPO_NAME}/core/
+    - python3 -m pip install --user -r orchestrator_workflow/requirements.txt
+    - pip install --user ./{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}
+    - python orchestrator_workflow/runner.py --execute
+  rules:
+    - if: $SKIP_WORKFLOW
+      when: never
+    - if: $SKIP_RUNNER
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: $CI_COMMIT_REF_NAME == "prod" || $CI_COMMIT_TAG
+      changes:
+        - ${REPO_NAME}/core/orchestrator_workflow/*
+        - ${REPO_NAME}/core/orchestrator_workflow/*/*
+        - ${REPO_NAME}/core/config/*/prediction_config.yaml
+        - ${REPO_NAME}/core/config/*/dataflow_config.yaml
+        - ${REPO_NAME}/core/config/*/monitoring_config.yaml
+        - ${REPO_NAME}/core/config/*/orchestration_config.yaml
+      variables:
+        ENV: "prod"
+    - if: $CI_COMMIT_REF_NAME != "prod"
+      changes:
+        - ${REPO_NAME}/core/orchestrator_workflow/*
+        - ${REPO_NAME}/core/orchestrator_workflow/*/*
+        - ${REPO_NAME}/core/config/*/prediction_config.yaml
+        - ${REPO_NAME}/core/config/*/dataflow_config.yaml
+        - ${REPO_NAME}/core/config/*/monitoring_config.yaml
+        - ${REPO_NAME}/core/config/*/orchestration_config.yaml
+      variables:
+        ENV: "exp"
+ 

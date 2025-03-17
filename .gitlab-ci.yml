@@ -1,0 +1,164 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [DO NOT EDIT] 
+
+variables: 
+  IMAGE: "registry.dci.bt.com/app21279/base-dockers/copier/slim-py39:v0.0.1"
+  RUNNER: "mobius_shared_runner"
+
+stages:
+  - run_e2e_testing
+  - trigger_e2e_testing_commit
+  - trigger_e2e_testing_mr
+
+run_e2e_testing:
+  stage: run_e2e_testing
+  allow_failure: false
+  tags:
+    - ${RUNNER}
+  image:
+    name: ${IMAGE}
+    entrypoint: [""]
+  script:
+    - git config --global user.email "${GITLAB_USER_EMAIL}"
+    - git config --global user.name "${GITLAB_USER_NAME}"
+    - cd ..
+      
+    # Providing the option to specify variables at runtime, do this to change test repo
+    - > 
+      if [ -n "$prediction_aws" ]; then
+          export prediction_batch="false"
+          export prediction_aws="true"
+          export monitoring="false"
+      else
+          export prediction_batch="true"
+          export prediction_aws="false"
+          export monitoring="true"
+      fi
+    - >
+      if [ -n "$gitlab_remote_location" ] || [ -n "$target_repo" ] || [ -n "$target_experiment" ] || [ -n "$target_branch" ]; then
+          if [ -z "$gitlab_remote_location" ] || [ -z "$target_repo" ] || [ -z "$target_experiment" ] || [ -z "$target_branch" ]; then
+              echo "Error: All variables must not be null; gitlab_remote_location, target_repo, target_experiment, target_branch"
+              exit 1
+          fi
+          export branch_name='tmp-exp'
+          export commit_message="${target_experiment}-${target_branch}"
+          export package_name=$(echo $target_experiment | sed 's/-/_/g')
+
+          git clone https://GIT_KEY:${GIT_TOKEN}@gitlab.agile.nat.bt.com/${gitlab_remote_location}/${target_repo}.git -b ${target_branch}
+          cd ${target_repo}
+          git checkout -b ${branch_name}
+          cp -r "${target_repo}/core/config/" ../config
+          rm -rf ${target_repo}
+      else
+          export gitlab_remote_location="CDATASCI/gcp/templates/testing"
+          export target_repo="ml-template-testing"
+          export target_experiment="tmptest-${CI_REF_SLUG}"
+          export package_name="ml_template_testing"
+          export branch_name="test/${CI_REF_NAME}"
+          export output_dir="test-repo"
+          export commit_message="${CI_REF_NAME}"
+          mkdir ${output_dir}
+          cd ${output_dir}
+      fi
+    - export local_repo_location="/builds/${gitlab_remote_location}"
+
+    # Running copier on the ml-template
+    - copier copy --overwrite --vcs-ref=HEAD --trust ../ml-template . 
+      --data author_name="${GITLAB_USER_NAME}" 
+      --data git_email="${GITLAB_USER_EMAIL}" 
+      --data user_uin="${GITLAB_USER_LOGIN}" 
+      --data user_team="ds-capability" 
+      --data gitlab_remote_location="${gitlab_remote_location}" 
+      --data local_repo_location="${local_repo_location}" 
+      --data repo_name="${target_repo}" 
+      --data experiment_name="${target_experiment}" 
+      --data package_name="${package_name}" 
+      --data ci_commit_branch="${branch_name}" 
+      --data project_id="bt-bvp-ml-plat-ai-pipe-exp" 
+      --data pip_artifactory="dsc-pyartifactory" 
+      --data service_account="ml-pipelines-sa@bt-bvp-ml-plat-ai-pipe-exp.iam.gserviceaccount.com" 
+      --data region="europe-west2" 
+      --data docker_repo="ds-capability-docker-registry" 
+      --data exp_bucket="ds-capability" 
+      --data prod_bucket="ds-capability-prod" 
+      --data training="true" 
+      --data prediction="true" 
+      --data prediction_batch="${prediction_batch}" 
+      --data prediction_vertex="false" 
+      --data prediction_cloudrun="false" 
+      --data prediction_aws="${prediction_aws}" 
+      --data monitoring="${monitoring}" 
+      --data aws_project_id="341377015103" 
+      --data aws_default_region="eu-west-2" 
+      --data aws_team="nba" 
+      --data aws_auto_deployment="false"
+
+    - >
+      if [ -z "$target_branch" ]; then
+          git init
+          git remote add origin https://GIT_KEY:${GIT_TOKEN}@gitlab.agile.nat.bt.com/${gitlab_remote_location}/${target_repo}.git
+          git checkout -b "${branch_name}"
+          git add .
+          git commit -m "Initial commit of ml-template"
+      fi
+
+    - git add .
+    # - git add -f "${target_repo}/env"
+    - git commit --allow-empty -m "${CI_COMMIT_MESSAGE}"
+    - git push -f https://GIT_KEY:${GIT_TOKEN}@gitlab.agile.nat.bt.com/${gitlab_remote_location}/${target_repo}.git
+
+    - >
+      if [ -n "$target_branch" ]; then
+          git checkout exp
+          git merge ${branch_name} --strategy-option theirs
+          git push origin exp
+
+          git branch --delete ${branch_name}
+          git checkout -b ${branch_name}
+          git push --set-upstream origin ${branch_name}
+          rm -rf ./${target_repo}/core/config/
+          mv ../new_config ./${target_repo}/core/config
+          git add .
+          git commit -m "Default config from template"
+          git push -o merge_request.create -o merge_request.target=exp -o merge_request.remove_source_branch
+      fi
+  artifacts:
+    reports:
+      dotenv: build.env
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: manual
+      variables:
+          CI_REF_NAME: "mr/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+          CI_REF_SLUG: "mr-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+    - if: $CI_PIPELINE_SOURCE != 'merge_request_event'
+      when: manual
+      variables:
+          CI_REF_NAME: "${CI_COMMIT_REF_NAME}"
+          CI_REF_SLUG: "${CI_COMMIT_REF_SLUG}"
+
+trigger_e2e_testing_commit:
+  stage: trigger_e2e_testing_commit
+  trigger:
+    project: CDATASCI/gcp/templates/testing/ml-template-testing
+    branch: test/${CI_COMMIT_REF_NAME}
+    strategy: depend
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "merge_request_event"
+      when: on_success
+
+trigger_e2e_testing_mr:
+  stage: trigger_e2e_testing_mr
+  trigger:
+    project: CDATASCI/gcp/templates/testing/ml-template-testing
+    branch: test/mr/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}
+    strategy: depend
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: on_success

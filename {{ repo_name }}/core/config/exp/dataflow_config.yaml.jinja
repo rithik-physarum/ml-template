@@ -1,0 +1,20 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [DO NOT EDIT] 
+
+job_name: "{{ experiment_name }}-prediction"
+template_name: "{{ experiment_name }}-prediction"
+network: "bvp-ml-platform-exp-vpc-network"
+subnetwork: "regions/europe-west2/subnetworks/default"
+use_public_ips: false
+experiments:
+  - "use_runner_v2"
+  - "no_use_multiple_sdk_containers"
+flags: []
+sdk_location: "container"
+sdk_container_image: "{{ region }}-docker.pkg.dev/{{ project_id }}/{{ docker_repo }}/{{ repo_name }}/{{ experiment_name }}-prediction:latest"

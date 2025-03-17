@@ -1,0 +1,121 @@
+variables:
+  TF_BUCKET: bt-bvp-ml-plat-ai-pipe-exp-tfstate-shared-vpc
+  PREDICTION_CR_IMAGE_NAME: {{ repo_name }}-cr-onlinemodel
+  PREDICTION_CR_IMAGE: $DOCKER_REGISTRY/$project_id/$docker_registry/$PREDICTION_CR_IMAGE_NAME:latest
+
+cache:
+  paths:
+    - .prediction
+
+build_prediction_cloudrun_docker:
+  stage: build_prediction_cloudrun_docker
+  environment: exp
+  tags:
+    - ${RUNNER}
+  image:
+    name: ${DOCKER_BUILD_IMAGE}
+    entrypoint: [""]
+  script:
+    - mkdir -p /kaniko/.docker
+    - export "COMMIT_TAG=$DOCKER_REGISTRY/$project_id/$docker_registry/$PREDICTION_CR_IMAGE_NAME:$CI_COMMIT_SHA"
+    - |-
+      CREDS=$(echo -n _json_key:$(cat $TERRAFORM_SA_JSON) | base64 | tr -d '\n')
+      cat >> /kaniko/.docker/config.json <<-EOL
+        {
+          "auths": {
+            "{{ region }}-docker.pkg.dev": {
+              "auth": "$CREDS"
+            }
+          },
+          "proxies": {
+            "default": {
+              "httpProxy": "${http_proxy}",
+              "httpsProxy": "${https_proxy}"
+            }
+          }
+        }
+      EOL
+    - |-
+      /kaniko/executor --context $CI_PROJECT_DIR/{{ repo_name }}/core \
+        --dockerfile $CI_PROJECT_DIR/{{ repo_name }}/core/prediction/prediction_cloudrun/Dockerfile \
+        --build-arg http_proxy=${http_proxy}\
+        --build-arg GIT_TOKEN=${GIT_TOKEN} \
+        --build-arg https_proxy=${https_proxy}\
+        --build-arg no_proxy=${no_proxy}\
+        --snapshot-mode=time\
+        --single-snapshot\
+        --use-new-run\
+        --skip-tls-verify\
+        --destination $PREDICTION_CR_IMAGE\
+        --destination $COMMIT_TAG
+    - echo "PREDICTION_CR_IMAGE=$COMMIT_TAG" >> $CI_PROJECT_DIR/build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+  rules:
+    - if: $CI_COMMIT_BRANCH == 'pre-prod'
+      changes:
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/app/*
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/app/online_prediction/*
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/Dockerfile
+
+prediction_cloudrun_terraform_plan_online_model:
+  environment: exp
+  stage: prediction_cloudrun_terraform_plan_online_model
+  tags:
+   - ${RUNNER}
+  image:
+    name: ${TERRAFORM_IMAGE}
+    entrypoint: [""]
+  script:
+    - cd $CI_PROJECT_DIR/{{ repo_name }}/core/prediction/prediction_cloudrun/terraform
+    - export GOOGLE_APPLICATION_CREDENTIALS=$TERRAFORM_SA_JSON
+    - gcloud auth activate-service-account --key-file $TERRAFORM_SA_JSON
+    - terraform init -backend-config="bucket=$TF_BUCKET" -backend-config="prefix=$REPO_NAME"
+    - terraform validate
+    - terraform plan -var cloud_run_docker_image=$PREDICTION_CR_IMAGE -var experiment_name=$(python3 -c "import sys, json; print(json.load(open('$CI_PROJECT_DIR/{{ repo_name }}/core/config/config.json'))['experiment_name'])") -var-file=${CI_ENVIRONMENT_NAME}-envars.tfvars -var-file=${CI_ENVIRONMENT_NAME}.tfvars  -out=${PLAN}.tfplan
+    - terraform show -no-color ${PLAN}.tfplan > ${PLAN}.txt
+    - terraform show -json -no-color ${PLAN}.tfplan > ${PLAN}.json
+  artifacts:
+    paths:
+      - {{ repo_name }}/core/prediction/prediction_cloudrun/terraform/$PLAN.tfplan
+      - {{ repo_name }}/core/prediction/prediction_cloudrun/terraform/$PLAN.txt
+      - {{ repo_name }}/core/prediction/prediction_cloudrun/terraform/$PLAN.json
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "pre-prod"'
+      changes:
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/app/*
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/app/online_prediction/*
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/Dockerfile
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/terraform/*  
+
+prediction_cloudrun_terraform_apply_online_model:
+  environment: exp
+  stage: prediction_cloudrun_terraform_apply_online_model
+  needs:
+  - job: prediction_cloudrun_terraform_plan_online_model
+    artifacts: true
+  tags:
+   - ${RUNNER}
+  image:
+    name: ${TERRAFORM_IMAGE}
+    entrypoint: [""]
+  script:
+    - cd $CI_PROJECT_DIR/{{ repo_name }}/core/prediction/prediction_cloudrun/terraform
+    - export GOOGLE_APPLICATION_CREDENTIALS=$TERRAFORM_SA_JSON
+    - gcloud auth activate-service-account --key-file $TERRAFORM_SA_JSON
+    - terraform init -backend-config="bucket=$TF_BUCKET" -backend-config="prefix=$REPO_NAME"
+    - terraform validate
+    - terraform apply -input=false $PLAN.tfplan 
+    - echo $(terraform output url)
+    - echo "MODEL_ENDPOINT=$(terraform output url)" >> $CI_PROJECT_DIR/build.env
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "pre-prod"'
+      changes:
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/app/*
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/app/online_prediction/*
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/Dockerfile
+        - {{ repo_name }}/core/prediction/prediction_cloudrun/terraform/*
+  artifacts:
+    reports:
+      dotenv: build.env

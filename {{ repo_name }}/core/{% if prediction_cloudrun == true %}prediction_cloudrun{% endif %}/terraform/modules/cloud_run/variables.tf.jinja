@@ -1,0 +1,61 @@
+variable "cloud_run_service_name" {
+  type        = string
+  default     = "dataflow-job-trigger"
+  description = "Name of your Cloud run service"
+}
+
+variable "region" {
+  type        = string
+  default     = "europe-west2"
+  description = "Region of the GCP project space"
+}
+
+variable experiment_name {
+  type        = string
+  description = "(Required) Experiment Name for downloading model" 
+  default     = "{{ experiment_name }}"
+}
+{% if hh_360 == true %}
+variable hh360token {}
+variable hh360secret {}
+variable gittoken {}
+{% endif %}
+variable "cloud_run_docker_image" {
+  type        = string
+  description = "Artifact registry path to a docker image to be deployed"
+}
+
+variable "cloud_run_service_account_name" {
+  type        = string
+  description = "Email address of the IAM service account associated with the revision of the service."
+}
+
+variable "vpc_connector_id" {
+  type        = string
+  description = "Connector id"
+}
+
+variable "project_id" {
+  type        = string
+  description = "GCP project space"
+}
+
+variable "environment_service_account" {
+  type        = string
+  description = "dataflow service account"
+}
+
+variable "max_scale" {
+  type        = string
+  default     = "5"
+  description = "maximum number of cpus."
+}
+
+variable "env_vars" {
+  type = list(object({
+    name  = string
+    value = string 
+  }))
+  default     = []
+  description = "(Optional) The fields to define cloud run config"
+}

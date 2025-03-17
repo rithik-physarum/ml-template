@@ -1,0 +1,7 @@
+gcp-tools-lite==0.0.36
+model-lineage==0.2.11
+# Comment for new dataflow example
+# mlops-decorators==0.1.10
+apache-beam[gcp]==2.59.0
+numpy>=1.22,<2
+pandas

@@ -1,0 +1,23 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [CAN EDIT]
+prediction_pipeline_params: {}
+monitoring_workflow_params: {}
+source_data_product_name: ""
+alert_threshold:
+  jensenshannon: 0.5
+  kullbackleibler: 0.5
+  wasserstein: 0.5
+
+# [DO NOT EDIT]
+workflow_name : "{{ experiment_name }}-orchestrator"
+topic: "data-product-success-run"
+expiration_duration_secs: null
+monitoring_drift_table: "{{ project_id|replace("exp", "prod") }}.dataproc_monitoring.{{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}_monitoring_drift"
+schema_validation:
+  schema_validation_template_url: "gs://ds-capability-prod/schema-validation/schema_validation/config/0.0.7/template/schema-validation"

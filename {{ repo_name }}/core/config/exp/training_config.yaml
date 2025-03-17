@@ -1,0 +1,40 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [CAN EDIT] - But CANNON REMOVE any variables. Please reuse if possible.
+
+training_seed: 16
+gcs:
+  # Vertex runner variable
+  vertex_config_dir: "vertex_configs"
+bq:
+  dataset_id: "ml_template"
+  table_name: "ml_template_example_core_training_view"
+  # IMPORTANT: ALL NUMERIC DATA MUST BE CONVERTED TO INT/FLOAT
+  #            IF NOT, MODEL-LINEAGE WILL RETURN ERRORS
+  # IF YOU WANT TO MODIFY COLUMN TYPE, PLEASE CREATE A VIEW FOR THE UPDATE
+  # THE CURRENT MODEL-LINEAGE DON'T SUPPORT QUERY
+  query: |
+    SELECT *
+    FROM 
+      bt-bvp-ml-plat-ai-pipe-exp.ml_template.ml_template_example_core_training_view
+  target_col: "target"
+  date_timestamp_column: "update_dt"
+  # IMPORTANT: THIS IS FOR THE LINEAGE BASELINE AND MONITORING
+  exclude_columns:
+    - sub_id
+    - subscriber_num
+    - account_num
+    - contract_end_date
+    - reference_date
+    - target
+    - update_dt
+  entity_columns:
+    - sub_id
+    - subscriber_num
+    - account_num
+# Custom configs

@@ -1,0 +1,36 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [CAN EDIT] - But CANNON REMOVE any variables. Please reuse if possible.
+
+training_seed: 16
+gcs:
+  # Vertex runner variable
+  vertex_config_dir: "vertex_configs"
+bq:
+  dataset_id: "ml_template"
+  table_name: "ml_template_example_core_training"
+  query: |
+    SELECT 
+      * 
+    FROM 
+      bt-bvp-ml-plat-ai-pipe-exp.ml_template.ml_template_example_core_training
+    LIMIT 100
+  target_col: "target"
+  date_timestamp_column: "reference_date"
+  exclude_columns:
+    - sub_id
+    - subscriber_num
+    - account_num
+    - contract_end_date
+    - reference_date
+    - target
+  entity_columns:
+    - sub_id
+    - subscriber_num
+    - account_num
+# Custom configs

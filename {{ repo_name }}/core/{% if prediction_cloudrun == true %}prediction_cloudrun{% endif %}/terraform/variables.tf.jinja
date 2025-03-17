@@ -1,0 +1,56 @@
+variable "networking_remote_state_bucket" {
+  type = string
+}
+
+variable "networking_remote_state_prefix" {
+  type = string
+}
+
+variable cloud_run_service_name {
+  type        = string
+  description = "(Required) The Cloud run service name"
+}
+
+variable cloud_run_docker_image {
+  type        = string
+  description = "(Required) The Cloud run image uri"
+}
+
+variable environment_service_account {
+  type        = string
+  description = "(Required) The Cloud run env service account"
+}
+
+variable cloud_run_service_account_name {
+  type        = string
+  description = "(Required) The Cloud run deployment service account"
+}
+
+variable region {
+  type        = string
+  description = "(Required) The region for resourcs"
+  default = "{{ region }}"
+}
+
+variable experiment_name {
+  type        = string
+  description = "(Required) Experiment Name for downloading model" 
+  default     = "{{ experiment_name }}"
+}
+
+variable run_id {
+  type        = string
+  description = "(Required) Run id for downloading model" 
+  default     = ""
+}
+
+variable "env_vars" {
+  type = list(object({
+    name  = string
+    value = string 
+  }))
+  default     = []
+  description = "(Optional) The fields to define cloud run config"
+}
+
+variable project_id {}

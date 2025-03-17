@@ -1,0 +1,266 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [DO NOT EDIT]
+
+run_prediction_tests:
+  stage: tests
+  environment: ${ENV}
+  timeout: 2h
+  tags:
+   - ${RUNNER}
+  image:
+    name: ${DATAFLOW_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+    
+    - cd ${REPO_NAME}/core/
+    - pip install --user -U -r prediction/requirements.txt
+    - pip install --user tox
+    - python -m tox -c prediction/ -r
+  artifacts:
+    paths:
+      - artifacts/
+  rules:
+    - if: $SKIP_TEST
+      when: never
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: $CI_COMMIT_BRANCH == "prod" || $CI_COMMIT_TAG
+      changes:
+        - ${REPO_NAME}/core/prediction/*
+        - ${REPO_NAME}/core/prediction/**/*
+      variables:
+        ENV: "prod"
+    - if: $CI_COMMIT_BRANCH != "prod"
+      changes:
+        - ${REPO_NAME}/core/prediction/*
+        - ${REPO_NAME}/core/prediction/**/*
+      variables:
+        ENV: "exp"
+
+build_prediction_docker:
+  stage: docker_builds
+  needs: 
+    - job: docker_auth
+      artifacts: true
+  environment: ${ENV}
+  timeout: 2h
+  tags:
+   - ${RUNNER}
+  image:
+    name: ${DOCKER_BUILD_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.docker_build_setup, script]
+
+    - |-
+      /kaniko/executor --context ${CI_PROJECT_DIR}/${REPO_NAME}/core \
+        --dockerfile ${CI_PROJECT_DIR}/${REPO_NAME}/core/prediction/Dockerfile \
+        --build-arg http_proxy=${http_proxy}\
+        --build-arg https_proxy=${https_proxy}\
+        --build-arg no_proxy=${NO_PROXY}\
+        --build-arg GIT_TOKEN=${GIT_TOKEN}\
+        --skip-tls-verify\
+        --destination ${PREDICTION_PIPELINE_IMAGE}
+  rules: 
+    - if: $SKIP_DOCKER
+      when: never
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: $CI_COMMIT_BRANCH == "prod" || $CI_COMMIT_TAG
+      changes:
+        - ${REPO_NAME}/core/prediction/Dockerfile
+        - ${REPO_NAME}/core/prediction/requirements.txt
+        - ${REPO_NAME}/core/prediction/dataflow/*
+        - ${REPO_NAME}/core/prediction/dataflow/**/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/**/*
+      variables:
+        ENV: "prod"
+      when: manual
+    - if: $CI_COMMIT_BRANCH != "prod"
+      changes:
+        - ${REPO_NAME}/core/prediction/Dockerfile
+        - ${REPO_NAME}/core/prediction/requirements.txt
+        - ${REPO_NAME}/core/prediction/dataflow/*
+        - ${REPO_NAME}/core/prediction/dataflow/**/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/**/*
+      variables:
+        ENV: "exp"
+      when: manual
+
+run_build_prediction_pipeline:
+  stage: run_build_prediction_pipeline
+  environment: ${ENV}
+  timeout: 2h
+  tags:
+   - ${RUNNER}
+  image:
+    name: ${DATAFLOW_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+
+    - cd ${REPO_NAME}/core
+    - pip install --user {{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/.
+    - pip install --user -U -r prediction/requirements.txt
+
+    - >
+      if [ $SKIP_RUNNER == "true" ]; then
+          python prediction/runner.py --generate-template
+      else
+          python prediction/runner.py
+      fi
+  rules:
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: $CI_COMMIT_BRANCH == "prod" || $CI_COMMIT_TAG
+      changes:
+        - ${REPO_NAME}/core/prediction/*
+        - ${REPO_NAME}/core/prediction/**/*
+      variables:
+        ENV: "prod"
+    - if: $CI_COMMIT_BRANCH != "prod"
+      changes:
+        - ${REPO_NAME}/core/prediction/*
+        - ${REPO_NAME}/core/prediction/**/*
+      variables:
+        ENV: "exp"
+
+migrate_artifact_exp_to_prod:
+  stage: prediction_deployment_preprocess
+  environment: ${ENV}
+  timeout: 2h
+  tags:
+    - ${RUNNER}
+  image:
+    name: ${DATAFLOW_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+    - pip install --user -U -r ${REPO_NAME}/core/prediction/requirements.txt
+    - pip install --user ${REPO_NAME}/core/{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/.
+    - !reference [.migration_authentication, script]
+    - cd ${REPO_NAME}/core
+    - python3 prediction/migrate_artifact.py
+  rules:
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $SKIP_DEPLOY
+      when: never
+    - if: $SKIP_MIGRATE
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - ${REPO_NAME}/core/prediction/*
+        - ${REPO_NAME}/core/prediction/**/*
+  variables:
+    ENV: "exp"
+  allow_failure: true
+
+register_model:
+  stage: prediction_deployment_preprocess
+  environment: $ENV
+  timeout: 2h
+  tags:
+    - ${RUNNER}
+  image:
+    name: ${DATAFLOW_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+
+    - pip install --user -U -r ${REPO_NAME}/core/prediction/requirements.txt
+    - pip install --user ${REPO_NAME}/core/{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}/.
+    - cd ${REPO_NAME}/core
+    - python3 prediction/register_model_version.py
+  rules:
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $SKIP_DEPLOY
+      when: never
+    - if: $SKIP_MIGRATE
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $CI_COMMIT_BRANCH == "prod" || $CI_COMMIT_TAG
+      variables:
+        ENV: "prod"
+    - if: $CI_COMMIT_BRANCH != "prod"
+      changes:
+        - ${REPO_NAME}/core/prediction/*
+        - ${REPO_NAME}/core/prediction/**/*
+      variables:
+        ENV: "exp"
+

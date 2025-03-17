@@ -1,0 +1,5 @@
+gcp-tools-lite==0.0.36
+model-lineage==0.2.11
+numpy>=1.22,<2
+matplotlib
+pandas

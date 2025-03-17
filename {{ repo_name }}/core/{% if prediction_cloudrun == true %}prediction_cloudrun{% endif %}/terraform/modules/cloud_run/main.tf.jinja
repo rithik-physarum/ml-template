@@ -1,0 +1,71 @@
+resource "google_cloud_run_service" "cloud_run" {
+  name     = var.cloud_run_service_name 
+  location = var.region
+
+  template {
+    spec {
+      containers {
+        image = var.cloud_run_docker_image
+        dynamic "env" {
+            for_each = var.env_vars
+            content {
+                name                = env.value.name
+                value               = env.value.value
+            }
+        }
+        env {
+            name="EXPERIMENT_NAME"
+            value=var.experiment_name
+        }
+      
+    {% if hh_360 == true %}
+            env {
+          name = "HHFS_TOKEN"
+          value_from {
+            secret_key_ref {
+              name = var.hh360token.secret_id
+              key = var.hh360token.key
+            }
+          }
+        }
+        env {
+          name = "HHFS_SECRET"
+          value_from {
+            secret_key_ref {
+              name = var.hh360secret.secret_id
+              key = var.hh360secret.key
+            }
+          }
+        }
+        env {
+          name = "GITLAB_TOKEN"
+          value_from {
+            secret_key_ref {
+              name = var.gittoken.secret_id
+              key = var.gittoken.key
+            }
+          }
+        }
+        env {
+          name = "HHFS_HOST"
+          value = "http://10.154.0.5/api"
+        }
+        
+  {% endif %}
+      }
+   service_account_name = var.cloud_run_service_account_name
+    }
+    metadata {
+      annotations = {
+        "autoscaling.knative.dev/maxScale" = var.max_scale
+        "run.googleapis.com/vpc-access-connector" = var.vpc_connector_id
+        "run.googleapis.com/vpc-access-egress" = "all-traffic"
+      }
+    }
+  }
+  traffic {
+    percent         = 100
+    latest_revision = true
+  }
+
+}

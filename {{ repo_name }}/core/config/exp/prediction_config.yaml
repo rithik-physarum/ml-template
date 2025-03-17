@@ -1,0 +1,62 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [CAN EDIT] - landing dir if not unica
+# DO NOT REMOVE any variables, please REUSE variables
+
+target_run_id: null
+batch_size: 20
+bq:
+  # IMPORTANT: ALL NUMERIC DATA MUST BE CONVERTED TO INT/FLOAT
+  #            IF NOT, MODEL-LINEAGE WILL RETURN ERRORS
+  # IF YOU WANT TO MODIFY COLUMN TYPE, PLEASE CREATE A VIEW FOR THE UPDATE
+  # THE CURRENT MODEL-LINEAGE DON'T SUPPORT QUERY
+  query: |
+    SELECT 
+      *
+    FROM bt-bvp-ml-plat-ai-pipe-exp.ml_template.ml_template_example_core_pred_input
+  output_table: "bt-bvp-ml-plat-ai-pipe-exp:ml_template.ml_template_example_core_predictions_partitioned"
+  output_table_schema: "MODEL_ID:STRING, KEY_VALUE:STRING, MODEL_OUTPUT:FLOAT64, CREATE_DATE:DATE"
+  output_table_header: 
+    - "MODEL_ID" 
+    - "BRAND"
+    - "KEY_TYPE"
+    - "KEY_VALUE" 
+    - "MODEL_OUTPUT"
+    - "MODEL_OUTPUT_TYPE"
+    - "CREATE_DATE"
+    - "STALE_DATE"
+  output_table_partition_col: "CREATE_DATE"
+  temp_dataset: "beam_temp"
+columns:
+  drop_cols:
+    - subscriber_num
+    - account_num
+    - contract_end_date
+    - reference_date
+    - update_dt
+
+
+gcs:
+  dataflow_dir: "dataflow"
+  max_bytes_per_shard: 736432000
+  shard_name_template: "_SSSSSS_NNNNNN"
+  unica:
+    # ALL UNICA variables MUST follow deployment docs in template
+    landing_dir: "unica-model-scores/landing"
+    gcp_edw_unica_str: "GCP_EDW_UNICA_EE_"
+    brand: "EE"
+    key_type: "sub_id"
+    output_type: "DOUBLE"
+  pega:
+    pega_model_scores_landing: "pega-model-scores/landing"
+    output_type: "FF_VARCHAR_84"
+    output_desc: "pega output description"
+    predictions_prefix: "predictions"
+    partition_col_model_name: "MODEL_NAME"
+    partition_col_score_dtm: "SCORE_CREATE_DTM"
+    output_table_schema: "ACCOUNT_ID:STRING, SERVICE_ID:STRING, SERVICE_NUM:STRING, BRAND:STRING, FLEX_ATTR_NAME:STRING, FLEX_ATTR_VALUE:STRING, FLEX_ATTR_DESC:STRING, SCORE_EXPIRY_DTM:TIMESTAMP"

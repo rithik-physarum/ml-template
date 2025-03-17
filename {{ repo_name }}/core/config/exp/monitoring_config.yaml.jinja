@@ -1,0 +1,247 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE:
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+ 
+# [CAN NOT EDIT] - DO NOT EDIT
+# TODO: move "can not edit" below "can edit"
+
+# configuration of all the task to be created in the pipline.
+ 
+# Name of the dataproc template which the monitoring code is going to execute.
+dataproc_workflow_name: data-monitoring-job-v0-0-9
+ 
+# The cluster name used to create the cluster in dataproc env.
+cluster_name: "{{ experiment_name|lower|replace('-', '')|replace(' ', '')|truncate(17, end='') }}mntrclr"
+ 
+# local docker image which is used when testing the monitoring locally.
+local_docker_image: registry.dci.bt.com/app21279/monitoring-core/pyspark/slim-py39:v0.0.2
+ 
+
+# [CAN EDIT] - For local runner only 
+
+# spark configuration section - Settings here will override the default setting of the system.
+spark_config:
+  # spark.sql.repl.eagerEval.enabled: True
+  # spark.dynamicAllocation.enabled: False
+  # spark.sql.broadcastTimeout: 900s
+  # spark.hadoop.fs.gs.impl: com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem
+  # spark.hadoop.fs.AbstractFileSystem.gs.impl: com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS
+
+  # These are for local runner
+  # TODO: add runner config automatically, then we don't need to modify spark config manually.
+  # spark.hadoop.fs.gs.proxy.address: http://clientproxy.nat.bt.com:8080
+  # spark.hadoop.fs.gs.auth.service.account.json.keyfile: /root/.config/gcloud/application_default_credentials.json
+
+  # These are for all runners
+  spark.jars: https://storage.googleapis.com/hadoop-lib/gcs/gcs-connector-hadoop3-latest.jar,https://storage.googleapis.com/spark-lib/bigquery/spark-3.5-bigquery-0.41.0.jar
+  spark.hadoop.fs.gs.auth.service.account.enable: True
+  # Please confirm you have permission to this bigquery dataset
+  materializationDataset: monitoring_temp
+  viewsEnabled: true
+ 
+
+
+
+
+# [CAN EDIT] - EDIT BELOW 
+ 
+# Loader class name either lineage_loader or yaml_loader -> lineage_loader will pull config info from the lineage_library while yaml_loader will config info from the yaml file. yaml_file is good for testing locally.
+loader_class: lineage_loader
+ 
+# initialization parameter for loader class. for lineage loader, it is sample is given below. For yaml_loader ist will be config_file_path=<path to yaml monitoring_config_file>
+###  PLEASE UPDATE THE model_version AND run_id
+# TODO: get variables from other config files
+# TODO: get last run_id or target_run_id or CI variable run id
+# lineage_loader:
+# The run_id must match the target_run_id in prediction_config.yaml
+loader_class_args: run_id=tmptest-optimise-byron-20250212163804,user_uin={{ user_uin }},use_case={{ repo_name }},experiment_name={{ experiment_name }},model_name={{ experiment_name }},model_version=dev,querier_project={{ project_id }},lineage_project=bt-bvp-ml-plat-ai-pipe-prod,lineage_dataset=model_lineage
+# yaml_loader:
+# loader_class_args: config_file_path=/home/host/ml-template-testing/ml-template-testing/core/config/exp/monitoring_config.yaml
+
+# The sepertor used to sepeate multiple argument as done above in the loader_class_args
+loader_class_args_sep: ','
+ 
+# This section is for various task which monitoring is going to perform.
+# the format as below
+# task_name_unique:
+#   task_class: The class from the monitoring library to be executed for the task
+#   task_class_param_1:  the parameters to be passed to the task class
+#   task_class_param_2:  the parameters to be passed to the task class
+ 
+### BELOW IS SAMPLE.  PLEASE CONFIGURE IT ACCORDING TO YOUR REQUIREMENTS.
+tasks:
+  bq_source1:
+    # Get source from bigquery feature store (prediction data)
+    task_class: "monitoring.task.BigQuerySource"
+    query: "SELECT * except (subscriber_num,account_num,contract_end_date,reference_date) FROM bt-bvp-ml-plat-ai-pipe-exp.ml_template.ml_template_example_core_pred_input_view"
+  bq_source2:
+    # TODO: Move it to model lineage, monitoring_metrics table
+    # TODO: create table automatically
+    # TODO: create a last run date calculator and sink >>>>> dataproc_monitoring
+    # TODO: insert data to this table automatically
+    task_class: "monitoring.task.BigQuerySource"
+    table: "{{ project_id }}.dataproc_monitoring.{{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}_monitoring_last_run_date"
+    allow_empty: True
+  read_baseline:
+    # TODO: model_version is from global config
+    # TODO: add model and experiment name
+    task_class: "monitoring.task.ReadBaseline"
+    lineage_project: "bt-bvp-ml-plat-ai-pipe-prod"
+    lineage_dataset: "model_lineage"
+    use_case: "{{ repo_name }}"
+    experiment_name: "{{ experiment_name }}"
+    run_id: "tmptest-optimise-byron-20250212163804"
+    model_version: "dev"
+  row_selector:
+    # It will pick the rows after the last_run_date
+    task_class: "monitoring.task.RowSelector"
+    column: "update_dt"
+  # column_selector:
+    # Please select target columns if you don't want to take all columns
+    # task_class: "monitoring.task.ColumnSelector"
+    # columns: ["update_dt", "lifetime_tenure", "current_brand_tenure"]
+  hist_calculator:
+   task_class: "monitoring.task.HistCalculator"
+   ignore_columns: ["update_dt"]
+   grp_cols: ["update_dt"]
+  skew_calculator:
+    task_class: "monitoring.task.SkewCalculator"
+    grp_cols: ["update_dt"]
+  outlier_detector:
+    task_class: "monitoring.task.OutlierDetector"
+    result_type : "count"
+    grp_cols: ["update_dt"]
+  stats_calulator:
+    task_class: "monitoring.task.StatsCalculator"
+    grp_cols: ["update_dt"]
+  kurt_calulator:
+    task_class: "monitoring.task.KurtosisCalculator"
+    grp_cols: ["update_dt"] 
+  wsd_calculator:
+    task_class: "monitoring.task.WsdCalculator"
+    grp_cols: ["update_dt"] 
+
+### PROVIDE DESTINATION TABLE FOR STORING MONITORING RESULT
+  stat_sink:
+    task_class: "monitoring.task.BigQuerySink"
+    # TODO: modify the table name, replace "-" by "_"
+    table: "{{ project_id }}.dataproc_monitoring.{{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}_stats_sink"
+  kurt_sink:
+    task_class: "monitoring.task.BigQuerySink"
+    table: "{{ project_id }}.dataproc_monitoring.{{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}_kurt_sink"
+  hist_sink:
+    task_class: "monitoring.task.BigQuerySink"
+    table: "{{ project_id }}.dataproc_monitoring.{{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}_hist_sink"
+  skew_sink:
+    task_class: "monitoring.task.BigQuerySink"
+    table: "{{ project_id }}.dataproc_monitoring.{{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}_skew_sink"
+  wsd_sink:
+    task_class: "monitoring.task.BigQuerySink"
+    table: "{{ project_id }}.dataproc_monitoring.{{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}_wsd_sink"
+  outlier_sink:
+    task_class: "monitoring.task.BigQuerySink"
+    table: "{{ project_id }}.dataproc_monitoring.{{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}_outlier_sink"
+ 
+# Configuration of pipeline structure
+# This section lists how the pipeline is to be created. it defines the relationship between various tasks.
+# when node has only one parent
+# node_name_unique:
+#    task: <choose from above created task>
+#    parents: <parent node name>
+#
+# when node has more than one parent
+# node_name_unique:
+#    task: <choose from above created task>
+#    parents:
+#       <parent node 1>: <variable name the output of parent will be mapped to>
+#       <parent node 2>: <variable name the output of parent will be mapped to>
+ 
+pipeline:
+  # TODO: repo name + experiment name
+  name: {{ experiment_name|lower|replace('-', '_')|replace(' ', '_') }}
+  graph:
+    node0:
+      task: read_baseline
+    node1:
+      task: bq_source1
+    node2:
+      task: bq_source2
+    node3:
+      task: row_selector
+      parents:
+        # <target_node_name>: main_df > parameter.target_dataframe 
+        # <target_node_name>: selector_df > parameter.selector_dataframe
+        node1: main_df
+        node2: selector_df
+    # If you want to select target columns only
+    # node4:
+    #   task: column_selector
+    #   parents: node1
+  
+    # Stat Pipeline
+    node5:
+      task: stats_calulator
+      parents: node3
+    node7:
+      task: stat_sink
+      parents: node5
+
+    # Hist Pipeline
+    node8:
+      task: hist_calculator
+      parents:
+        node0: baseline
+        node3: df
+    node16:
+      task: hist_sink
+      parents: node8
+    # Skew Pipeline, Requires Hist Calculator
+    # TODO: Solve out of memory issue in local
+    # TODO: Apply pyspark 3.3 functions
+    # from pyspark.sql.functions import skewness
+    # TODO: Correct the baseline values in model-lineage
+    node9:
+      task: skew_calculator
+      parents: node8
+    node13:
+      task: skew_sink
+      parents: node9
+    # Kurt Pipeline, Requires Hist Calculator
+    # TODO: Solve out of memory issue in local
+    # TODO: Apply pyspark 3.3 functions
+    # from pyspark.sql.functions import kurtosis
+    # TODO: Correct the baseline values in model-lineage
+    node10:
+      task: kurt_calulator
+      parents: node8
+    node12:
+      task: kurt_sink
+      parents: node10
+
+    # WSD Pipeline, Requires Hist Calculator
+    # TODO: Solve out of memory issue in local
+    # TODO: Apply pyspark 3.3 functions
+    # TODO: Add wsd to model-lineage
+    node11:
+      task: wsd_calculator
+      parents:
+        node8: df
+        node0: baseline
+    node14:
+      task: wsd_sink
+      parents: node11
+    
+    # # TODO: outlier_detector is getting issue
+    # node6:
+    #   task: outlier_detector
+    #   parents:
+    #     # <node_name>: <parameter>
+    #     node3: df
+    #     node0: baseline
+    # # TODO: outlier_detector is getting issue
+    # node15:
+    #   task: outlier_sink
+    #   parents: node6

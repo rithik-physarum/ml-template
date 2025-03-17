@@ -1,0 +1,24 @@
+FROM registry.dci.bt.com/app21279/base-dockers/gcloud/python-gcloud-39:v0.1.0
+
+ARG http_proxy
+ARG https_proxy
+ARG no_proxy
+ARG GIT_TOKEN
+
+ENV GIT_TOKEN $GIT_TOKEN
+
+RUN apt-get update -y
+RUN apt-get install git -y
+RUN python3 -m pip config --user set global.index-url https://agile.nat.bt.com/nexus/repository/AICOE_Data-Science-Open-Source-Repository_pypi/simple
+RUN python3 -m pip config --user set global.extra-index-url https://agile.nat.bt.com/nexus/repository/pypi-proxy/simple
+
+COPY ./prediction/prediction_cloudrun/app/ ./
+COPY ./config/ ./config/
+RUN python3 -m pip install -U pip
+RUN python3 -m pip install -r ./requirements.txt
+RUN python3 -m pip install --no-cache-dir -r ./custom_requirements.txt
+
+ENV PORT 8080
+EXPOSE 8080
+
+CMD exec gunicorn --bind :$PORT --workers 1 -t 600 --worker-class uvicorn.workers.UvicornWorker  --threads 8 main:app

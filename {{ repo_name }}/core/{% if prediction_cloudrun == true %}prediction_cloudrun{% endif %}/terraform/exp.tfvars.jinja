@@ -1,0 +1,11 @@
+# remote states
+networking_remote_state_bucket="{{ project_id }}-tfstate-shared-vpc"
+networking_remote_state_prefix="networking"
+
+# Code versioning
+project_id = "{{ project_id }}" 
+
+# CLOUD RUN variable
+environment_service_account="ml-pipelines-sa@bt-bvp-ml-plat-ai-pipe-exp.iam.gserviceaccount.com"
+cloud_run_service_account_name="ml-pipelines-sa@bt-bvp-ml-plat-ai-pipe-exp.iam.gserviceaccount.com"
+cloud_run_service_name="{{ repo_name }}-online-model"

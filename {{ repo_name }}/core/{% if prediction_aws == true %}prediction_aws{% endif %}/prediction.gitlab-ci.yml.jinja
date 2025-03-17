@@ -1,0 +1,373 @@
+create_aws_repo:
+  stage: pre_docker_build
+  environment: $CI_ENVIRONMENT
+  tags:
+    - mobius_shared_runner
+  image:
+    name: $AWS_BASE_IMAGE
+    entrypoint: [""]
+  script:
+    - aws ecr describe-repositories --repository-names ${PREDICTION_CR_IMAGE_NAME} || aws ecr create-repository --repository-name ${PREDICTION_CR_IMAGE_NAME}
+  rules:
+    - if: $SKIP_DOCKER
+      when: never
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "prod"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: $CI_COMMIT_REF_NAME
+    - if: '$CI_COMMIT_REF_NAME == "stag"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: exp
+    - if: $CI_COMMIT_BRANCH 
+      changes:
+        - {{ repo_name }}/core/prediction_aws/app/*
+        - {{ repo_name }}/core/prediction_aws/app/**/*
+        - {{ repo_name }}/core/prediction_aws/Dockerfile
+      variables:
+        ENV: exp
+        CI_ENVIRONMENT: exp
+
+build_aws_ecs_docker:
+  stage: docker_builds
+  environment: exp
+  timeout: 2h
+  needs: 
+    - job: docker_auth
+      artifacts: true
+  tags:
+    - $RUNNER
+  image:
+    name: ${DOCKER_BUILD_IMAGE}
+    entrypoint: [""]
+  script:
+      - echo $PREDICTION_CR_IMAGE 
+      - mkdir -p /kaniko/.docker
+      - cp ${CI_PROJECT_DIR}/.pypirc /kaniko/.pypirc
+      - cp ${CI_PROJECT_DIR}/pip.conf /kaniko/pip.conf
+      - cp ${CI_PROJECT_DIR}/${CI_PIPELINE_ID}.json /kaniko/key.json
+      - cp ${CI_PIPELINE_ID}.git_token /kaniko/${CI_PIPELINE_ID}.git_token
+      - cp ${CI_PIPELINE_ID}.git_token ${CI_PROJECT_DIR}/{{ repo_name }}/core/
+      - export CURRENT_DATETIME=$(date +"%Y%m%d%H%M%S")
+      - export COMMIT_TAG="${CI_REGISTRY_IMAGE}/${PREDICTION_CR_IMAGE_NAME}:${CI_COMMIT_SHA}${CURRENT_DATETIME}"
+
+      - echo {\"credsStore\":\"ecr-login\",\"credHelpers\":{\"{{ aws_project_id }}.dkr.ecr.{{ aws_default_region }}.amazonaws.com\":\"ecr-login\"}} > /kaniko/.docker/config.json
+      - |-
+       /kaniko/executor --context ${CI_PROJECT_DIR}/{{ repo_name }}/core \
+        --dockerfile ${CI_PROJECT_DIR}/{{ repo_name }}/core/prediction_aws/Dockerfile \
+        --build-arg BASE_IMAGE=${TF_CDK_IMAGE}\
+        --build-arg http_proxy=${http_proxy}\
+        --build-arg https_proxy=${https_proxy}\
+        --build-arg ci_pipeline_id=${CI_PIPELINE_ID}\
+        --build-arg no_proxy=${no_proxy}\
+        --build-arg git_token=${GIT_TOKEN}\
+        --build-arg project_id=${PROJECT_ID}-${ENV}\
+        --build-arg ENV=${ENV}\
+        --skip-tls-verify\
+        --snapshot-mode=redo\
+        --single-snapshot\
+        --use-new-run\
+        --destination $PREDICTION_CR_IMAGE\
+        --destination $COMMIT_TAG
+      - echo "PREDICTION_CR_IMAGE=$COMMIT_TAG" >> $CI_PROJECT_DIR/build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+  rules:
+    - if: $SKIP_DOCKER
+      when: never
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "prod" && $AUTO_DEPLOYMENT == "true"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: $CI_COMMIT_REF_NAME
+      allow_failure: false
+    - if: '$CI_COMMIT_REF_NAME == "stag" && $AUTO_DEPLOYMENT == "true"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: exp
+      allow_failure: false
+    - if: '$CI_COMMIT_REF_NAME == "prod" && $AUTO_DEPLOYMENT != "true"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: $CI_COMMIT_REF_NAME
+      allow_failure: false
+      when: manual
+    - if: '$CI_COMMIT_REF_NAME == "stag" && $AUTO_DEPLOYMENT != "true"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: exp
+      allow_failure: false
+      when: manual
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - {{ repo_name }}/core/prediction_aws/*
+        - {{ repo_name }}/core/prediction_aws/**/*
+      variables:
+        ENV: exp
+        CI_ENVIRONMENT: exp
+      allow_failure: true
+      when: manual
+
+build_aws_model_deployment_plan:
+  environment: $CI_ENVIRONMENT
+  stage: build_aws_model_deployment_plan
+  allow_failure: false
+  needs:
+    - job: build_aws_ecs_docker
+      artifacts: true
+      optional: true
+  tags:
+    - $RUNNER
+  image:
+    name: ${TERRAFORM_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+
+    - cp ${CI_PIPELINE_ID}.git_token $CI_PROJECT_DIR/${REPO_NAME}/core/prediction_aws/terraform
+    - cp ${CI_PIPELINE_ID}.json $CI_PROJECT_DIR/${REPO_NAME}/core/prediction_aws/terraform
+
+    - cd $CI_PROJECT_DIR/${REPO_NAME}/core/prediction_aws/terraform
+
+    - export IMAGE_URI=$PREDICTION_CR_IMAGE
+    - export TF_BUCKET=$TF_BUCKET
+    - export REPO_NAME=$REPO_NAME
+    - echo CONFIG_PATH="$CI_PROJECT_DIR/${REPO_NAME}/core/config/$ENV" >> $CI_PROJECT_DIR/${REPO_NAME}/env/$ENV.env
+    - export PLAN=${PLAN/\//}
+
+    - terraform init -backend-config="bucket=$TF_BUCKET" -backend-config="key=${TF_PREFIX}"
+    - terraform validate  
+    - terraform plan -var ecs_image_uri=${IMAGE_URI} -var env=${ENV} -out=${PLAN}.tfplan
+    - terraform show -no-color ${PLAN}.tfplan > ${PLAN}.txt
+    - terraform show -json -no-color ${PLAN}.tfplan > ${PLAN}.json
+    - >
+      if grep -q "Your infrastructure matches the configuration" ${PLAN}.txt; then
+        echo "❌ No changes detected in the Terraform plan. Failing the job.";
+        exit 1;
+      else
+        echo "✅ Changes detected or new resources planned.";
+      fi
+    - echo "PREDICTION_CR_IMAGE=$PREDICTION_CR_IMAGE" >> $CI_PROJECT_DIR/build.env
+  artifacts:
+    paths:
+      -  $CI_PROJECT_DIR/${REPO_NAME}/core/prediction_aws/terraform/${PLAN}.tfplan
+    reports:
+        dotenv: build.env
+  rules:
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "prod"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: $CI_COMMIT_REF_NAME
+    - if: '$CI_COMMIT_REF_NAME == "stag"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: exp
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - {{ repo_name }}/core/prediction_aws/*
+        - {{ repo_name }}/core/prediction_aws/**/*
+      variables:
+        ENV: exp
+        CI_ENVIRONMENT: exp
+
+deploy_aws_model:
+  environment: $CI_ENVIRONMENT
+  stage: deploy_aws_model
+  allow_failure: false
+  needs:
+  - job: build_aws_model_deployment_plan
+    artifacts: true
+  tags:
+    - $RUNNER
+  image:
+    name: ${TERRAFORM_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - cp ${CI_PIPELINE_ID}.git_token $CI_PROJECT_DIR/${REPO_NAME}/core/prediction_aws/terraform
+    - cp ${CI_PIPELINE_ID}.json $CI_PROJECT_DIR/${REPO_NAME}/core/prediction_aws/terraform
+
+    - cd $CI_PROJECT_DIR/${REPO_NAME}/core/prediction_aws/terraform
+    - terraform init -backend-config="bucket=$TF_BUCKET" -backend-config="key=$TF_PREFIX"
+    - terraform validate
+    - terraform apply -input=false ${PLAN}.tfplan
+  rules:
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "prod" && $AUTO_DEPLOYMENT == "true"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: $CI_COMMIT_REF_NAME
+    - if: '$CI_COMMIT_REF_NAME == "stag" && $AUTO_DEPLOYMENT == "true"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: exp
+    - if: '$CI_COMMIT_REF_NAME == "prod" && $AUTO_DEPLOYMENT != "true"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: $CI_COMMIT_REF_NAME
+      when: manual
+    - if: '$CI_COMMIT_REF_NAME == "stag" && $AUTO_DEPLOYMENT != "true"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: exp
+      when: manual
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - {{ repo_name }}/core/prediction_aws/*
+        - {{ repo_name }}/core/prediction_aws/**/*
+      variables:
+        ENV: exp
+        CI_ENVIRONMENT: exp
+      when: manual
+  artifacts:
+    reports:
+      dotenv: build.env
+
+test_aws_endpoint:
+  stage: test_aws_endpoint
+  environment: exp
+  allow_failure: false
+  needs:
+    - job: deploy_aws_model
+  tags:
+    - $RUNNER
+  image:
+    name: registry.dci.bt.com/app21279/base-dockers/tf_cdk/slim-py39:v0.0.2
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+    - cp ${CI_PIPELINE_ID}.git_token $CI_PROJECT_DIR/{{ repo_name }}/core/prediction_aws/app/
+    - cp ${CI_PIPELINE_ID}.json $CI_PROJECT_DIR/{{ repo_name }}/core/prediction_aws/app/
+    - cd $CI_PROJECT_DIR/{{ repo_name }}/core/
+    - pip install --user ./{{ package_name|lower|replace('_', '-')|replace(' ', '-') }}
+    - cd prediction_aws/app
+    - cp -r $CI_PROJECT_DIR/{{ repo_name }}/core/config ./
+    - echo CONFIG_PATH="$CI_PROJECT_DIR/{{ repo_name }}/core/config/${ENV}" >> $CI_PROJECT_DIR/{{ repo_name }}/env/${ENV}.env
+    - pip install --user -r custom_requirements.txt
+    - mkdir -p $CI_PROJECT_DIR/results
+    - export LOCAL_RESULTS_DIR=$CI_PROJECT_DIR/results
+    - python test/load_test_runner.py
+  artifacts:
+    paths:
+      - results/
+    expire_in: 2 days
+  rules:
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "prod"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: $CI_COMMIT_REF_NAME
+    - if: '$CI_COMMIT_REF_NAME == "stag"'
+      variables:
+        ENV: $CI_COMMIT_REF_NAME
+        CI_ENVIRONMENT: exp
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        - {{ repo_name }}/core/prediction_aws/*
+        - {{ repo_name }}/core/prediction_aws/**/*
+      variables:
+        ENV: exp
+        CI_ENVIRONMENT: exp
+
+{% if aws_auto_deployment == true %}
+trigger_next_branch:
+  stage: trigger_next_branch
+  allow_failure: false
+  environment: $CI_ENVIRONMENT
+  image:
+    name: ilp10865002.docker.nat.bt.com/digital_ai_brain/data-science-base-ci-image:stable
+    entrypoint: [""]
+  tags:
+    - $RUNNER
+  script:
+    - curl -X POST 
+      --fail 
+      -F "token=${GITLAB_PIPELINE_TOKEN}"
+      -F "ref=${BRANCH_NAME}" 
+      -F "variables[AUTO_DEPLOYMENT]=true" 
+      "https://gitlab.agile.nat.bt.com/api/v4/projects/${CI_PROJECT_ID}/trigger/pipeline"
+  rules:
+    - if: $SKIP_PREDICT
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "stag" && $AUTO_DEPLOYMENT == "true"'
+      variables:
+        BRANCH_NAME: prod
+        CI_ENVIRONMENT: exp
+    - if: '($CI_COMMIT_BRANCH =~ /^pre-prod\// || $CI_COMMIT_BRANCH == "pre-prod") && $AUTO_DEPLOYMENT == "true"'
+      variables:
+        BRANCH_NAME: stag
+        CI_ENVIRONMENT: exp
+
+{% endif %}
+
+ 

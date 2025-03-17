@@ -1,0 +1,18 @@
+.ipynb_checkpoints
+__pycache__
+*.egg-info/
+tmp
+public
+.gitkeep
+pip.conf
+build.log
+**/venv/
+# **/env/
+**/local_outputs
+**/build.env
+**/build
+**/workflow_deploy.yaml
+*.parquet
+*.csv
+*.pkl
+*.zip

@@ -1,0 +1,27 @@
+# Section 3 - Cloud Run Service - Model trigger
+module "CloudRun" {
+  source = "./modules/cloud_run"
+  project_id = var.project_id
+  env_vars = var.env_vars
+  experiment_name = var.experiment_name
+  cloud_run_service_name = var.cloud_run_service_name
+  cloud_run_docker_image = var.cloud_run_docker_image
+  cloud_run_service_account_name = var.cloud_run_service_account_name
+  vpc_connector_id = data.terraform_remote_state.base_networking.outputs.connector_id
+  environment_service_account = var.environment_service_account
+  {% if hh_360 == true %}
+    hh360secret = {
+    "key": "1",
+    "secret_id": "HHFS_SECRET_VAI"
+  }
+  hh360token = {
+    "key": "1",
+    "secret_id": "HHFS_TOKEN_VAI"
+  }
+  gittoken = {
+    "key": "1",
+    "secret_id": "GITLAB_TOKEN"
+  }
+{% endif %}
+
+}

@@ -1,0 +1,30 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [CAN EDIT] - version
+
+model_development_version: "dev"
+owner_email: "{{ git_email }}"
+
+# [ DO NOT EDIT]
+
+project_id: "{{ project_id }}"
+# Model Lineage Dataset for GCP
+lineage_project: "{{ project_id|replace("exp", "prod") }}"
+lineage_dataset: "model_lineage"
+# Model Lineage Dataset for Local Testing
+# lineage_project: "{{ project_id }}"
+# lineage_dataset: "model_lineage_v2"
+repo_name: "{{ repo_name }}"
+experiment_name: "{{ experiment_name }}"
+region: "{{ region }}"
+bucket: "gs://{{ exp_bucket }}"
+networking_bucket_suffix: "tfstate-shared-vpc"
+vertex_service_account: "{{ service_account }}"
+dataflow_service_account: "dataflow-job-sa@bt-bvp-ml-plat-ai-pipe-exp.iam.gserviceaccount.com"
+workflow_service_account: "cloud-workflow-sa@bt-bvp-ml-plat-ai-pipe-exp.iam.gserviceaccount.com"
+terraform_service_account: "terraform-deploy-sa@bt-bvp-ml-plat-ai-pipe-exp.iam.gserviceaccount.com"

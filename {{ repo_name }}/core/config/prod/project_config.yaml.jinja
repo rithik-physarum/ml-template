@@ -1,0 +1,26 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [CAN EDIT] - development version 
+
+owner_email: "{{ git_email }}"
+model_development_version: "prod"
+
+# [DO NOT EDIT]
+
+project_id: "{{ project_id|replace("exp", "prod") }}"
+lineage_project: "{{ project_id|replace("exp", "prod") }}"
+lineage_dataset: "model_lineage"
+repo_name: "{{ repo_name }}"
+experiment_name: "{{ experiment_name }}"
+region: "{{ region }}"
+bucket: "gs://{{ prod_bucket }}"
+networking_bucket_suffix: "tfstate-shared-vpc"
+vertex_service_account: "{{ service_account|replace("exp", "prod") }}"
+dataflow_service_account: "dataflow-job-sa@bt-bvp-ml-plat-ai-pipe-prod.iam.gserviceaccount.com"
+workflow_service_account: "cloud-workflow-sa@bt-bvp-ml-plat-ai-pipe-prod.iam.gserviceaccount.com"
+terraform_service_account: "terraform-deploy-sa@bt-bvp-ml-plat-ai-pipe-prod.iam.gserviceaccount.com"

@@ -1,0 +1,87 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [DO NOT EDIT]
+
+variables:
+  # Basic config
+  REPO_NAME: "{{ repo_name }}"
+  EXPERIMENT_NAME: "{{ experiment_name }}"
+  RUNNER: "mobius_shared_runner"
+
+  # CI Shortcut
+  ## Please run CI with CI variables instead of modifying this section
+  ### Skip all tests, [run_training_tests, run_prediction_tests]
+  SKIP_TEST: "true"
+  ### Skip all docker builds, [build_training_docker, build_prediction_docker]
+  # SKIP_DOCKER: "true"
+  ### Skip all executions, [run_training_pipeline, run_prediction_pipeline,
+  ### execute_orchestration_workflow]
+  # SKIP_RUNNER: "true"
+  ### Skip all deployment, [monitoring_tf, build_prediction_template,
+  ### generate_orchestration_workflow, plan_orchestration_tf, apply_orchestration_tf,
+  ### migrate_artifact_exp_to_prod]
+  # SKIP_DEPLOY: "true"
+  ### Skip individual pipeline
+  # SKIP_TRAIN: "true"
+  # SKIP_PREDICT: "true"
+  # SKIP_MONITOR: "true"
+  # SKIP_WORKFLOW: "true"
+  # SKIP_MIGRATE: "true"
+  ### Run individual pipeline
+  # RUN_TEST_ONLY: "true"
+  # RUN_DOCKER_ONLY: "true"
+  # RUN_TRAIN_ONLY: "true"
+  # RUN_PREDICT_ONLY: "true"
+  # RUN_MONITOR_ONLY: "true"
+  # RUN_WORKFLOW_ONLY: "true"
+  {% if prediction_aws == true %}### Always run docker auth for AWS docker image
+  RUN_DOCKER: "true"{% endif %}
+
+  # Advanced Config
+  ## Cloud
+  REGION: "{{ region }}"
+  PROJECT_ID: "{{ project_id|replace("-exp", "")|replace("-prod", "") }}"
+  BUCKET: "{{ exp_bucket|replace("exp", "")|replace("prod", "") }}"
+
+  #Prediction AWS Config
+  AWS_DEFAULT_REGION: {{ aws_default_region }}
+  TF_PREFIX: {{ experiment_name|lower|replace('_', '-')|replace(' ', '-') }}
+  CI_REGISTRY_IMAGE: {{ aws_project_id }}.dkr.ecr.{{ aws_default_region }}.amazonaws.com
+  PREDICTION_CR_IMAGE_NAME: {{ docker_repo }}/{{ repo_name }}-cr-onlinemodel
+  PREDICTION_CR_IMAGE: ${CI_REGISTRY_IMAGE}/${PREDICTION_CR_IMAGE_NAME}:latest
+
+  ## Terraform
+  PLAN: plan-${ENV}
+  TF_BUCKET: "${PROJECT_ID}-${ENV}-tfstate-shared-vpc"
+
+  ## Registry
+  HARBOR_REGISTRY: "registry.dci.bt.com/app21279"
+  DOCKER_REGISTRY: "${REGION}-docker.pkg.dev"
+  DOCKER_REGISTRY_NAME: "{{ docker_repo }}"
+  PY_REGISTRY: "${REGION}-python.pkg.dev"
+  PY_REGISTRY_NAME: "dsc-pyartifactory"
+
+  ## Docker Image
+  NO_PROXY: "*.agile.nat.bt.com"
+  DOCKER_BUILD_IMAGE: "${HARBOR_REGISTRY}/base-dockers/kaniko/slim-executor:v0.0.1"
+  TERRAFORM_IMAGE: "${HARBOR_REGISTRY}/base-dockers/terraform/gcloud-py39:v1.6.0"
+
+  # DS-tools docker images
+  # DATAFLOW_IMAGE: "${HARBOR_REGISTRY}/base-dockers/dataflow/slim-py39-ds-tools:v0.0.2"
+  # VERTEX_IMAGE: "${HARBOR_REGISTRY}/base-dockers/vertex/slim-py39-ds-tools:v0.0.2" 
+  # Normal docker images
+  DATAFLOW_IMAGE: "${HARBOR_REGISTRY}/base-dockers/dataflow/slim-py39:v0.0.4"
+  VERTEX_IMAGE: "${HARBOR_REGISTRY}/base-dockers/vertex/slim-py39:v0.0.3" 
+  GCLOUD_IMAGE: "${HARBOR_REGISTRY}/base-dockers/gcloud/gcloud-py39:v0.0.1"
+  TF_CDK_IMAGE: "${HARBOR_REGISTRY}/base-dockers/tf_cdk/slim-py39:v0.0.2"
+  MONITORING_IMAGE: "${HARBOR_REGISTRY}/monitoring-core/pyspark/slim-py39:v0.0.6"
+  AWS_BASE_IMAGE: registry.gitlab.com/gitlab-org/cloud-deploy/aws-base:latest
+  
+  TRAINING_PIPELINE_IMAGE: "${DOCKER_REGISTRY}/${PROJECT_ID}-${ENV}/${DOCKER_REGISTRY_NAME}/${REPO_NAME}/${EXPERIMENT_NAME}-training:latest"
+  TRAINING_DATAFLOW_PIPELINE_IMAGE: "${DOCKER_REGISTRY}/${PROJECT_ID}-${ENV}/${DOCKER_REGISTRY_NAME}/${REPO_NAME}/${EXPERIMENT_NAME}-training-dataflow:latest"
+  PREDICTION_PIPELINE_IMAGE: "${DOCKER_REGISTRY}/${PROJECT_ID}-${ENV}/${DOCKER_REGISTRY_NAME}/${REPO_NAME}/${EXPERIMENT_NAME}-prediction:latest"

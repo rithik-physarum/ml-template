@@ -1,0 +1,167 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [DO NOT EDIT]
+
+run_training_tests:
+  stage: tests
+  environment: $ENV
+  timeout: 2h
+  tags:
+   - ${RUNNER}
+  image:
+    name: ${VERTEX_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+    
+    - cd ${REPO_NAME}/core/
+    - pip install --user tox
+    - python -m tox -c training/ -r
+  rules:
+    - if: $SKIP_TEST
+      when: never
+    - if: $SKIP_TRAIN
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    # Auto-retraining
+    - if: $CI_COMMIT_TAG
+      when: never
+    # if: $CI_COMMIT_BRANCH = "prod"
+    - if: $CI_COMMIT_BRANCH != "prod" && $CI_COMMIT_BRANCH != "stag"
+      changes:
+        - ${REPO_NAME}/core/training/*
+        - ${REPO_NAME}/core/training/**/*
+      variables:
+        ENV: "exp"
+
+build_training_docker:
+  stage: docker_builds
+  needs: 
+    - job: docker_auth
+      artifacts: true
+  environment: $ENV
+  timeout: 2h
+  tags:
+    - ${RUNNER}
+  image:
+    name: ${DOCKER_BUILD_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.docker_build_setup, script]
+
+    - |-
+      /kaniko/executor --context $CI_PROJECT_DIR/${REPO_NAME}/core/ \
+        --dockerfile $CI_PROJECT_DIR/${REPO_NAME}/core/training/Dockerfile \
+        --build-arg http_proxy=${http_proxy}\
+        --build-arg https_proxy=${https_proxy}\
+        --build-arg no_proxy=${no_proxy}\
+        --build-arg GIT_TOKEN=${GIT_TOKEN}\
+        --cache=true\
+        --cache-dir ${CI_PROJECT_DIR}/.cache \
+        --cache-repo $CI_REGISTRY_IMAGE/cache \
+        --single-snapshot\
+        --use-new-run\
+        --skip-tls-verify\
+        --destination ${TRAINING_PIPELINE_IMAGE}
+  rules:
+    - if: $SKIP_DOCKER
+      when: never
+    - if: $SKIP_TRAIN
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_TRAIN_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    # Auto-retraining
+    - if: $CI_COMMIT_TAG
+      when: never
+    # - if: $CI_COMMIT_BRANCH == "prod" || $CI_COMMIT_TAG
+    #   changes:
+    #     - ${REPO_NAME}/core/training/Dockerfile
+    #     - ${REPO_NAME}/core/training/requirements.txt
+    #     - ${REPO_NAME}/core/{{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/*
+    #     - ${REPO_NAME}/core/{{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/**/*
+    #   variables:
+    #     ENV: "prod"
+    #   when: manual
+    - if: $CI_COMMIT_BRANCH != "prod" && $CI_COMMIT_BRANCH != "stag"
+      changes:
+        - ${REPO_NAME}/core/training/Dockerfile
+        - ${REPO_NAME}/core/training/requirements.txt
+        - ${REPO_NAME}/core/{{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/*
+        - ${REPO_NAME}/core/{{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/**/*
+      variables:
+        ENV: "exp"
+      when: manual
+
+run_training_pipeline:
+  stage: run_training_pipeline
+  environment: $ENV
+  timeout: 2h
+  tags:
+    - ${RUNNER}
+  image:
+    name: ${VERTEX_IMAGE}
+    entrypoint: [""]
+  script:
+    - !reference [.authentication, script]
+    - !reference [.pip_authentication, script]
+    
+    - cd ${REPO_NAME}/core
+    - pip install --user {{ package_name|lower|replace("_", "-")|replace(" ", "-") }}/.
+    - pip install --user -r training/requirements.txt
+    - python training/runner.py
+  rules:
+    - if: $SKIP_RUNNER
+      when: never
+    - if: $SKIP_TRAIN
+      when: never
+    - if: $RUN_TEST_ONLY
+      when: never
+    - if: $RUN_DOCKER_ONLY
+      when: never
+    - if: $RUN_PREDICT_ONLY
+      when: never
+    - if: $RUN_MONITOR_ONLY
+      when: never
+    - if: $RUN_WORKFLOW_ONLY
+      when: never
+    - if: $RUN_MIGRATE_ONLY
+      when: never
+    # Auto-retraining
+    - if: $CI_COMMIT_TAG
+      when: never
+    # - if: $CI_COMMIT_BRANCH == "prod" || $CI_COMMIT_TAG
+    #   variables:
+    #     ENV: "prod"
+    - if: $CI_COMMIT_BRANCH != "prod" && $CI_COMMIT_BRANCH != "stag"
+      changes:
+        - ${REPO_NAME}/core/training/*
+        - ${REPO_NAME}/core/training/**/*
+      variables:
+        ENV: "exp"

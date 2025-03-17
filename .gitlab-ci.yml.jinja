@@ -1,0 +1,59 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [DO NOT EDIT] 
+
+include:
+  # Gitlab Config Yaml
+  - local: {{ repo_name }}/core/config/gitlab/config.gitlab-ci.yml
+  # Common CI for WIF
+  - local: common.gitlab-ci.yml
+  # Pipelines
+  {% if training == true %}- local: {{ repo_name }}/core/training/training.gitlab-ci.yml{% endif %}
+  {% if prediction_batch == true %}- local: {{ repo_name }}/core/prediction/prediction.gitlab-ci.yml{% endif %}
+  {% if monitoring == true %}- local: {{ repo_name }}/core/monitoring/monitoring.gitlab-ci.yml{% endif %}
+  {% if prediction_cloudrun == true  %}- local: {{ repo_name }}/core/prediction_cloudrun/prediction.gitlab-ci.yml{% endif %}
+  {% if monitoring == true %}{% if prediction_batch == true %}- local: {{ repo_name }}/core/orchestrator_workflow/orchestrator.gitlab-ci.yml{% endif %}{% endif %}
+  {% if prediction_aws == true  %}- local: {{ repo_name }}/core/prediction_aws/prediction.gitlab-ci.yml{% endif %}
+
+cache:
+  paths:
+    - .{{ repo_name }}
+
+stages:
+  # General stages
+  - pre_docker_build
+  - docker_builds
+  - tests
+
+  {% if training == true %}# Training pipeline
+  - run_training_pipeline{% if aws_auto_deployment == true %}
+  - plan_training_tf
+  - apply_training_tf{% endif %}{% endif %}
+
+  {% if prediction_cloudrun == true %}# Cloudrun prediction pipeline
+  - build_prediction_cloudrun_docker
+  - prediction_cloudrun_terraform_plan_online_model
+  - prediction_cloudrun_terraform_apply_online_model{% endif %}
+
+  {% if prediction_batch == true %}# Dataflow prediction pipeline
+  - prediction_deployment_preprocess
+  - run_build_prediction_pipeline{% endif %}
+
+  {% if monitoring == true %}# Monitoring pipeline
+  - register_monitoring_config
+  - execute_monitoring_workflow{% endif %}
+
+  {% if monitoring == true %}{% if prediction_batch == true %}# Orchestration Workflow
+  - generate_orchestration_workflow
+  - execute_orchestration_workflow{% endif %}{% endif %}
+
+  {% if prediction_aws == true %}# AWS ECR prediction pipeline
+  - build_aws_model_deployment_plan
+  - deploy_aws_model
+  - test_aws_endpoint{% if aws_auto_deployment == true %}
+  - trigger_next_branch{% endif %}{% endif %}

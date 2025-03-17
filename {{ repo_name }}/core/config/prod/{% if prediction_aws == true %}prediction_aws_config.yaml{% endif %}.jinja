@@ -1,0 +1,111 @@
+model_config:
+  # TODO: Apply model lineage for depolyment
+  model_endpoint_name: {{ repo_name }}
+  target_run_id: null
+
+  artifacts:
+    model_object:
+        local_filename: "model.pkl"
+
+  # TODO: remove deduplicate from deployment pipeline
+  endpoint_test_payload: |
+    {}
+
+
+feature_store: null
+
+# To be used to pass endpoint testing parameters
+endpoint_test_config:
+  model_test_bucket: "ee-nba-model-dev"
+  start_duration: "2m"
+  ramp_up_duration: "5m"
+  ramp_down_duration: "2m"
+  initial_users: "2"
+  ramp_up_users: "10"
+  ramp_down_users: "0"
+
+aws_infra_config:
+  project_id: "{{ aws_project_id }}"
+  region: "{{ aws_default_region }}"
+  autoscaling_config:
+    desired_count: 1
+    max_replicas: 5
+    min_replicas: 1
+    scale_down_monitor_period: 60
+    scale_down_utilization: 35
+    scale_up_monitor_period: 30
+    scale_up_utilization: 60
+  cpu: 256
+  namespace_name: {{ aws_team }}-ml-model.private-prod
+  deployment_cluster_name: {{ aws_team }}-model-deployment-cluster-prod
+  port: 8080
+  deployment_env: prod
+  iam_config:
+    execution_role: ecsTaskExeRoleNBAProd
+    task_role: ecsTaskRoleNBAProd
+  launch_type: FARGATE
+  memory: 512
+  vpc_id: 'vpc-0260dc124b512d5e4'
+  security_group_config:
+    egress_rules:
+      subnet1:
+        cidr_blocks:
+        - 0.0.0.0/0
+        from_port: 443
+        to_port: 443
+      subnet2:
+        cidr_blocks:
+        - 10.2.0.0/24
+        - 10.2.1.0/24
+        - 10.2.2.0/24
+        from_port: 8080
+        to_port: 8080
+      subnet3:
+        cidr_blocks:
+        - 10.2.0.0/24
+        - 10.2.1.0/24
+        - 10.2.2.0/24
+        from_port: 8081
+        to_port: 8081
+      subnet4:
+        cidr_blocks:
+        - 0.0.0.0/0
+        - 10.2.0.0/24
+        - 10.2.1.0/24
+        - 10.2.2.0/24
+        from_port: 5432
+        to_port: 5432
+    ingress_rules:
+      subnet1:
+        cidr_blocks:
+        - 10.2.0.0/24
+        - 10.2.1.0/24
+        - 10.2.2.0/24
+        from_port: 8080
+        to_port: 8080
+      subnet2:
+        cidr_blocks:
+        - 10.2.0.0/24
+        - 10.2.1.0/24
+        - 10.2.2.0/24
+        from_port: 10000
+        to_port: 10000
+      subnet3:
+        cidr_blocks:
+        - 10.2.0.0/24
+        - 10.2.1.0/24
+        - 10.2.2.0/24
+        from_port: 8081
+        to_port: 8081
+      subnet4:
+        cidr_blocks:
+        - 0.0.0.0/0
+        - 10.2.0.0/24
+        - 10.2.1.0/24
+        - 10.2.2.0/24
+        from_port: 5432
+        to_port: 5432
+  subnet_list:
+    - subnet-087c3cd3b98a30581
+    - subnet-00e68444b41ff348f
+    - subnet-0e90848eb9d5c4ea9

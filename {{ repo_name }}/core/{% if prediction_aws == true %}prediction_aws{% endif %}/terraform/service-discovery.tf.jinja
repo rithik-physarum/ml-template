@@ -1,0 +1,23 @@
+data "aws_service_discovery_dns_namespace" "service_discovery_dns" {
+  name = "${local.aws_infra_config.namespace_name}"
+  type = "DNS_PRIVATE"
+}
+
+resource "aws_service_discovery_service" "service-discovery" {
+  name = "${local.project_config.experiment_name}-svc-dis-${local.aws_infra_config.deployment_env}"
+
+  dns_config {
+    namespace_id = data.aws_service_discovery_dns_namespace.service_discovery_dns.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}

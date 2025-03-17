@@ -1,0 +1,18 @@
+# -------------------------------------------------------------
+# YAML Configuration File
+# NOTE: 
+#   - DO NOT EDIT sections marked as [DO NOT EDIT]
+#   - Sections without this mark can be modified as needed.
+# -------------------------------------------------------------
+
+# [CAN EDIT] - param values
+parameter_values: {}
+
+# [DO NOT EDIT] 
+
+name: "{{ experiment_name }}-pipeline"
+base_image: {{ region }}-docker.pkg.dev/{{ project_id }}/{{ docker_repo }}/{{ repo_name }}/{{ experiment_name }}-training:latest
+description: ""
+pipeline_root: ""
+enable_caching: false
+template_path: ""
