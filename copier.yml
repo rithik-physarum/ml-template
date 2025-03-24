@@ -27,7 +27,7 @@ _tasks:
   - cp .common-answers.json /tmp/
   - rm __version__.py __init__.py pyproject.toml 
   - rm -rf .releaserc.yml .bumpversion.cfg
-  - python post_update_script.py
+  - python3 post_update_script.py
   - rm post_update_script.py
   - echo -e \
     "\n\n\n\nProject initialised!"
